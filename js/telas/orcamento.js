@@ -7,7 +7,7 @@ import { pode } from '../sinc.js';
 import {
   LADOS, TIPOS_BORDA, GRUPOS, RETO, temFaixa, compBorda, areaTampo, areaBordas, areaPeca, valorMaterial,
   acabDaBorda, acabamentoMaior, fixarPercentuais, percAcab, maoObraCalc, maoObraDe, percMaoObra, maoObraAlterada,
-  fatorMaoObra, valorPeca, qtdDe, totalGeral, orcDesatualizado, atualizarOrcamento,
+  fatorMaoObra, valorPeca, qtdDe, totalGeral, orcDesatualizado, atualizarOrcamento, atualizarPeca, pecaDesatualizada,
 } from '../calc.js';
 
 export const STATUS = { rascunho: 'Rascunho', enviado: 'Enviado', aprovado: 'Aprovado', perdido: 'Não aprovado' };
@@ -24,6 +24,7 @@ const filtro = { texto: '', status: 'aprovado' };
 let rascunho = null;   // peça em edição (cópia; só entra no orçamento ao salvar)
 let bordaSel = null;   // borda com a janela aberta no editor
 let popPos = { x: 0, y: 0 };
+let recalculada = false;   // a peça aberta mudou de valor por causa do cadastro
 
 const orcDaTela = () => achar('orcamentos', location.hash.split('/')[2]);
 const material = id => achar('materiais', id) || lista('materiais')[0] || { id: '', nome: 'Material removido', preco: 0, custo: 0, cor: '#b9b6b1' };
@@ -119,13 +120,13 @@ function cartaoSituacao(o) {
   const textos = {
     rascunho: 'Ainda não foi enviado ao cliente.',
     enviado: `Enviado ao cliente${quando}. Aguardando resposta.`,
-    aprovado: `Aprovado pelo cliente${quando}.`,
+    aprovado: `Aprovado pelo cliente${quando}. Orçamento aprovado não pode ser alterado.`,
     perdido: `Não aprovado${quando}.`,
   };
   const botoes = {
     rascunho: botao('enviado', 'Marcar como enviado') + botao('aprovado', 'Aprovar', 'primario') + botao('perdido', 'Não aprovado', 'perigo'),
     enviado: botao('aprovado', 'Aprovar', 'primario') + botao('perdido', 'Não aprovado', 'perigo'),
-    aprovado: botao('enviado', 'Reabrir'),
+    aprovado: '<button data-acao="situacao" data-status="enviado" data-confirma="Tocar de novo para reabrir">Reabrir para alterar</button>',
     perdido: botao('aprovado', 'Aprovar', 'primario') + botao('enviado', 'Reabrir'),
   };
   return `<div class="card situacao st-${o.status}">
@@ -136,21 +137,25 @@ function cartaoSituacao(o) {
 
 // ---------- tela do orçamento
 
+// Orçamento aprovado fica travado: nada nele pode ser alterado até ser reaberto
+export const travado = o => o.status === 'aprovado';
+
 function secaoItens(o, tipo) {
-  const g = GRUPOS[tipo];
+  const g = GRUPOS[tipo], fixo = travado(o), dis = fixo ? 'disabled' : '';
   const linhas = o.itens.map((it, i) => it.tipo !== tipo ? '' : `
     <div class="item-linha">
-      <input class="nome-item" aria-label="Nome do ${g.um}" data-item="${i}" data-prop="nome" value="${esc(it.nome)}" placeholder="Nome do ${g.um}">
-      <input aria-label="Quantidade" inputmode="numeric" data-item="${i}" data-prop="qtd" value="${it.qtd || ''}">
+      <input class="nome-item" aria-label="Nome do ${g.um}" data-item="${i}" data-prop="nome" value="${esc(it.nome)}" placeholder="Nome do ${g.um}" ${dis}>
+      <input aria-label="Quantidade" inputmode="numeric" data-item="${i}" data-prop="qtd" value="${it.qtd || ''}" ${dis}>
       <span>×</span>
-      <input aria-label="Preço unitário em reais" inputmode="decimal" data-item="${i}" data-prop="preco" value="${emCampo(it.preco)}" placeholder="0,00">
+      <input aria-label="Preço unitário em reais" inputmode="decimal" data-item="${i}" data-prop="preco" value="${emCampo(it.preco)}" placeholder="0,00" ${dis}>
       <b id="sub-${i}">${moeda(it.preco * it.qtd)}</b>
-      <button class="perigo" aria-label="Remover ${esc(it.nome)}" data-acao="rem-item" data-i="${i}">✕</button>
+      ${fixo ? '<span></span>' : `<button class="perigo" aria-label="Remover ${esc(it.nome)}" data-acao="rem-item" data-i="${i}">✕</button>`}
     </div>`).join('');
+  if (fixo && !linhas) return '';
   return `
     <h2>${g.varios}</h2>
     ${linhas ? `<div class="card">${linhas}</div>` : ''}
-    <a class="botao largo tracejado" href="#/o/${o.id}/item/${tipo}">+ Adicionar ${g.um}</a>`;
+    ${fixo ? '' : `<a class="botao largo tracejado" href="#/o/${o.id}/item/${tipo}">+ Adicionar ${g.um}</a>`}`;
 }
 
 export function telaOrcamento(id) {
@@ -166,15 +171,16 @@ export function telaOrcamento(id) {
       <button data-acao="atualizar-precos" data-confirma="Tocar de novo para atualizar">Atualizar preços</button>
     </div>` : '';
   const clientes = lista('clientes').sort((a, b) => a.nome.localeCompare(b.nome));
+  const fixo = travado(o), dis = fixo ? 'disabled' : '';
   const pecas = o.pecas.map(p => `
-    <a class="card peca" href="#/o/${o.id}/p/${p.id}">
+    <${fixo ? 'div' : `a href="#/o/${o.id}/p/${p.id}"`} class="card peca">
       <div class="mini">${desenho(p, { largura: 96, simples: true })}</div>
       <div class="info">
         <div class="nome">${qtdDe(p) > 1 ? qtdDe(p) + ' × ' : ''}${esc(p.nome)}</div>
         <div class="det">${esc(p.materialNome)} · ${m2(areaPeca(p) * qtdDe(p))}</div>
       </div>
       <div class="valor">${moeda(valorPeca(p))}</div>
-    </a>`).join('');
+    </${fixo ? 'div' : 'a'}>`).join('');
   return {
     nav: 'orcamentos', titulo: `Orçamento ${esc(o.numero)}`, voltar: '#/orcamentos',
     corpo: `
@@ -182,11 +188,11 @@ export function telaOrcamento(id) {
       ${avisoPrecos}
       <div class="card">
         <label for="cliente">Cliente</label>
-        <select id="cliente" data-campo="clienteId">
+        <select id="cliente" data-campo="clienteId" ${dis}>
           <option value="">— sem cliente —</option>
           ${clientes.map(c => `<option value="${c.id}" ${c.id === o.clienteId ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
         </select>
-        <details class="novo-cliente">
+        <details class="novo-cliente" ${fixo ? 'hidden' : ''}>
           <summary>Cadastrar cliente novo</summary>
           <div class="linha">
             <div><label for="nc-nome">Nome</label><input id="nc-nome" autocomplete="off"></div>
@@ -197,21 +203,21 @@ export function telaOrcamento(id) {
       </div>
       <h2>Pedras</h2>
       ${pecas || '<div class="card vazio">Nenhuma peça ainda.</div>'}
-      <a class="botao largo tracejado" href="#/o/${o.id}/nova">+ Adicionar peça</a>
+      ${fixo ? '' : `<a class="botao largo tracejado" href="#/o/${o.id}/nova">+ Adicionar peça</a>`}
       ${secaoItens(o, 'produto')}
       ${secaoItens(o, 'servico')}
       <h2>Extras</h2>
       <div class="card">
         <div class="linha">
           <div><label for="frete">Frete / instalação (R$)</label>
-            <input id="frete" inputmode="decimal" data-campo="frete" data-num value="${emCampo(o.frete)}" placeholder="0,00"></div>
+            <input id="frete" inputmode="decimal" data-campo="frete" data-num value="${emCampo(o.frete)}" placeholder="0,00" ${dis}></div>
           <div><label for="desconto">Desconto (R$)</label>
-            <input id="desconto" inputmode="decimal" data-campo="desconto" data-num value="${emCampo(o.desconto)}" placeholder="0,00"></div>
+            <input id="desconto" inputmode="decimal" data-campo="desconto" data-num value="${emCampo(o.desconto)}" placeholder="0,00" ${dis}></div>
           <div><label for="validade">Validade (dias)</label>
-            <input id="validade" inputmode="numeric" data-campo="validadeDias" data-num value="${o.validadeDias || ''}"></div>
+            <input id="validade" inputmode="numeric" data-campo="validadeDias" data-num value="${o.validadeDias || ''}" ${dis}></div>
         </div>
         <label for="obs" style="margin-top:10px">Observações (aparecem no orçamento do cliente)</label>
-        <textarea id="obs" rows="2" data-campo="obs">${esc(o.obs)}</textarea>
+        <textarea id="obs" rows="2" data-campo="obs" ${dis}>${esc(o.obs)}</textarea>
       </div>
       <h2>Folhas</h2>
       <div class="grade-botoes">
@@ -223,7 +229,7 @@ export function telaOrcamento(id) {
       <h2>Este orçamento</h2>
       <div class="linha">
         <button data-acao="duplicar-orc">Duplicar</button>
-        <button class="perigo" data-acao="excluir-orc" data-confirma="Tocar de novo para excluir">Excluir</button>
+        ${fixo ? '' : '<button class="perigo" data-acao="excluir-orc" data-confirma="Tocar de novo para excluir">Excluir</button>'}
       </div>`,
     rodape: `<div class="total"><small>Total do orçamento</small><b id="total">${moeda(totalGeral(o))}</b></div>
       <a class="botao primario" href="#/o/${o.id}/cliente">Ver orçamento</a>`,
@@ -253,6 +259,7 @@ function novaPeca(o, t) {
 export function telaTipos(id) {
   const o = achar('orcamentos', id);
   if (!o) return null;
+  if (travado(o)) return telaOrcamento(id);
   const tipos = lista('tipos').sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
   return {
     nav: 'orcamentos', titulo: 'Que peça é?', voltar: `#/o/${id}`,
@@ -327,11 +334,15 @@ function resumoPeca(p) {
 export function telaPeca(id, pid) {
   const o = achar('orcamentos', id);
   if (!o) return null;
+  if (travado(o)) return telaOrcamento(id);
   if (!rascunho || rascunho.id !== pid) {
     const salva = o.pecas.find(p => p.id === pid);
     if (!salva) return null;
     rascunho = JSON.parse(JSON.stringify(salva));
     bordaSel = null;
+    // editar uma peça é recalcular com os preços de hoje: material e percentuais vêm do cadastro atual
+    recalculada = pecaDesatualizada(rascunho);
+    atualizarPeca(rascunho);
   }
   const p = rascunho;
   const existe = o.pecas.some(x => x.id === p.id);
@@ -365,6 +376,7 @@ export function telaPeca(id, pid) {
         <label for="mo">Mão de obra desta peça (R$)</label>
         <input id="mo" inputmode="decimal" data-peca="maoObra" value="${emCampo(maoObraDe(p)) || '0,00'}">
         <div class="nota" id="mo-nota">${notaMaoObra(p)}</div>
+        ${existe && recalculada ? '<div class="alerta s-pendente" style="margin-top:10px">Os preços do cadastro mudaram depois que esta peça foi salva. Os valores abaixo já usam os preços atuais e passam a valer quando você salvar a peça.</div>' : ''}
         <div class="resumo" id="resumo" style="margin-top:12px">${resumoPeca(p)}</div>
       </div>
       <div class="linha">
@@ -399,6 +411,7 @@ function fecharBorda() {
 export function telaItens(id, tipo) {
   const o = achar('orcamentos', id);
   if (!o || !GRUPOS[tipo]) return null;
+  if (travado(o)) return telaOrcamento(id);
   return {
     nav: 'orcamentos', titulo: `Adicionar ${GRUPOS[tipo].um}`, voltar: `#/o/${id}`,
     corpo: `<div class="tipos">
@@ -430,7 +443,7 @@ export function entrada(el) {
     return;
   }
   const o = orcDaTela();
-  if (!o) return;
+  if (!o || travado(o)) return;
   if (el.dataset.campo) {
     const c = el.dataset.campo;
     o[c] = 'num' in el.dataset ? num(el.value) : el.value;
@@ -570,3 +583,13 @@ export const acoes = {
     redesenhar();
   },
 };
+
+// Nenhuma destas ações vale em orçamento aprovado (os botões somem da tela; isto é a segunda trava)
+for (const nome of ['atualizar-precos', 'cliente-rapido', 'excluir-orc', 'criar-peca', 'salvar-peca', 'excluir-peca', 'add-item', 'rem-item']) {
+  const acao = acoes[nome];
+  acoes[nome] = (...args) => {
+    const o = orcDaTela();
+    if (o && travado(o)) { aviso('Orçamento aprovado não pode ser alterado. Reabra para alterar.'); return; }
+    return acao(...args);
+  };
+}
