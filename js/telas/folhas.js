@@ -221,23 +221,34 @@ export function entrada(el) {
   document.getElementById('resumo-corte').className = el.checked ? '' : 'nao-imprime fora';
 }
 
+function foneDoCliente(o) {
+  const c = o.clienteId ? achar('clientes', o.clienteId) : null;
+  let fone = c ? String(c.telefone || '').replace(/\D/g, '') : '';
+  if (fone.length === 10 || fone.length === 11) fone = '55' + fone;
+  return fone.length < 12 ? '' : fone;
+}
+
 // Envia o PDF do orçamento. No celular abre o compartilhamento (WhatsApp, e-mail...) com o
-// arquivo anexado; no computador baixa o PDF e abre a conversa do cliente no WhatsApp.
+// arquivo anexado. Onde o aparelho não deixa compartilhar arquivo, baixa o PDF e abre a
+// conversa do cliente no WhatsApp para anexar.
 async function enviarOrcamento(o) {
-  const cfg = config();
-  const arquivo = await pdfOrcamento(o);
-  const texto = `Olá! Segue o orçamento ${o.numero} da ${cfg.empresa}.`;
+  const arquivo = pdfOrcamento(o);
+  let compartilhou = false;
   if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
-    try { await navigator.share({ files: [arquivo], title: `Orçamento ${o.numero}`, text: texto }); }
-    catch (e) { if (e.name === 'AbortError') return; throw e; }   // desistiu de compartilhar: não marca como enviado
-  } else {
+    try {
+      // sem espera entre o toque e esta chamada, e só com o arquivo: é o que os celulares aceitam melhor
+      await navigator.share({ files: [arquivo] });
+      compartilhou = true;
+    } catch (e) {
+      if (e.name === 'AbortError') return;   // desistiu de compartilhar: não marca como enviado
+      console.warn('Compartilhamento recusado', e);
+    }
+  }
+  if (!compartilhou) {
     baixar(arquivo);
-    const c = o.clienteId ? achar('clientes', o.clienteId) : null;
-    let fone = c ? String(c.telefone || '').replace(/\D/g, '') : '';
-    if (fone.length === 10 || fone.length === 11) fone = '55' + fone;
-    if (fone.length < 12) fone = '';
-    window.open(`https://wa.me/${fone}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
-    aviso('PDF baixado. Anexe o arquivo na conversa do WhatsApp.');
+    const texto = `Olá! Segue o orçamento ${o.numero} da ${config().empresa}.`;
+    window.open(`https://wa.me/${foneDoCliente(o)}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+    aviso('PDF salvo nos downloads. Anexe o arquivo na conversa do WhatsApp.');
   }
   if (o.status === 'rascunho') {
     o.status = 'enviado';
@@ -249,7 +260,7 @@ async function enviarOrcamento(o) {
 
 // Gera o PDF e imprime (ou baixa, no celular) sem sair da tela
 async function imprimirOrcamento(o) {
-  const feito = imprimirPdf(await pdfOrcamento(o));
+  const feito = imprimirPdf(pdfOrcamento(o));
   if (feito === 'baixado') aviso('PDF salvo nos downloads do aparelho.');
 }
 

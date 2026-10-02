@@ -8,6 +8,7 @@ import * as folhas from './telas/folhas.js';
 import * as gestao from './telas/gestao.js';
 import * as sinc from './sinc.js';
 import { logo } from './marca.js';
+import { prepararLogoPdf } from './folha-pdf.js';
 
 const modulos = [orc, folhas, gestao, sinc];
 const app = document.getElementById('app');
@@ -65,6 +66,7 @@ function rota() {
 function desenhar(manter) {
   if (!config()) return;   // dados sendo apagados (aparelho desconectado): a página recarrega em seguida
   aplicarTema(config().corTema || 'esmeralda');
+  prepararLogoPdf();
   // aparelho não autorizado: só a tela de bloqueio, sem menu e sem dados
   if (sinc.bloqueado()) {
     app.innerHTML = sinc.telaBloqueio();

@@ -34,6 +34,17 @@ async function logoJpeg() {
   return { bytes: Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)), w: c.width, h: c.height };
 }
 
+// A logo fica pronta de antemão: assim o PDF é gerado na hora do toque, sem espera.
+// (O celular só deixa abrir o compartilhamento logo em seguida ao toque no botão.)
+let logoPronta = { origem: null, jpeg: null };
+export async function prepararLogoPdf() {
+  const origem = config().logo || '';
+  if (logoPronta.origem === origem) return;
+  logoPronta = { origem, jpeg: null };
+  const jpeg = origem ? await logoJpeg().catch(() => null) : null;
+  if (logoPronta.origem === origem) logoPronta.jpeg = jpeg;
+}
+
 // Desenho da peça: tampo com as bordas em volta, como na tela. Devolve a altura usada.
 function desenharPeca(pdf, p, x, y, largura) {
   if (!(p.comp > 0 && p.larg > 0)) return 0;
@@ -71,7 +82,7 @@ function desenharPeca(pdf, p, x, y, largura) {
   return th + 2 * m;
 }
 
-export async function pdfOrcamento(o) {
+export function pdfOrcamento(o) {
   const cfg = config(), pdf = new Pdf();
   const acento = corDoTema('--p1'), suave = corDoTema('--ps');
   const detalhado = o.modoCliente !== 'resumido';
@@ -82,7 +93,7 @@ export async function pdfOrcamento(o) {
   const espaco = altura => { if (y + altura > ALTURA - M) { pdf.novaPagina(); y = M; } };
 
   // ---------- cabeçalho
-  const logo = await logoJpeg().catch(() => null);
+  const logo = logoPronta.origem === (cfg.logo || '') ? logoPronta.jpeg : null;
   if (logo) {
     const k = Math.min(52 / logo.w, 52 / logo.h);
     pdf.imagem(pdf.novaImagem(logo.bytes, logo.w, logo.h), M + (52 - logo.w * k) / 2, y + (52 - logo.h * k) / 2, logo.w * k, logo.h * k);
