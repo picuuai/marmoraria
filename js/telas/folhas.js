@@ -1,7 +1,7 @@
 // Folhas do orçamento: a do cliente (detalhada ou resumida), a de corte e a interna
 import { achar, gravar, config } from '../db.js';
 import { moeda, m2, pct, medida, esc, dataBR } from '../util.js';
-import { redesenhar } from '../nucleo.js';
+import { redesenhar, ir, aviso } from '../nucleo.js';
 import { desenho, desenhosCorte } from '../desenho.js';
 import {
   GRUPOS, areaPeca, valorMaterial, maoObraDe, percMaoObra, valorPeca, custoPedra, qtdDe,
@@ -87,7 +87,8 @@ export function telaCliente(id) {
     </div>
     <div class="resumo linha-topo">`;
   return {
-    nav: 'orcamentos', titulo: 'Orçamento do cliente', voltar: `#/o/${id}`, topo: botaoImprimir, classe: 'folha-a4',
+    nav: 'orcamentos', titulo: 'Orçamento do cliente', voltar: `#/o/${id}`, classe: 'folha-a4', depois: imprimirSePedido,
+    topo: `<button data-acao="enviar-orc" data-id="${o.id}">Enviar</button>${botaoImprimir}`,
     corpo: `
       <div class="card nao-imprime">
         <label>Como enviar ao cliente</label>
@@ -169,9 +170,9 @@ export function telaInterna(id) {
   const r = resultado(o);
   const linha = (nome, valor, cls = '') => `<div class="${cls}"><span>${nome}</span><span>${valor}</span></div>`;
   return {
-    nav: 'orcamentos', titulo: 'Folha interna', voltar: `#/o/${id}`, topo: botaoImprimir.replace(' / PDF', ''), classe: 'folha-a4',
+    nav: 'orcamentos', titulo: 'Financeiro', voltar: `#/o/${id}`, topo: botaoImprimir.replace(' / PDF', ''), classe: 'folha-a4',
     corpo: `
-      ${cabecalhoInterno(o, 'Folha interna — custos e lucro', 'uso da marmoraria, não enviar ao cliente')}
+      ${cabecalhoInterno(o, 'Financeiro — custos e lucro', 'uso da marmoraria, não enviar ao cliente')}
       ${o.pecas.length ? `<h2>Pedras</h2>
       <div class="card rola"><table class="tabela">
         <tr><th>Peça</th><th class="n">Área</th><th class="n">Custo da pedra</th><th class="n">Venda da pedra</th><th class="n">Mão de obra</th><th class="n">Lucro</th></tr>
@@ -219,7 +220,60 @@ export function entrada(el) {
   document.getElementById('resumo-corte').className = el.checked ? '' : 'nao-imprime fora';
 }
 
+// Texto do orçamento para mandar pelo WhatsApp (segue a escolha detalhado ou resumido)
+function textoOrcamento(o) {
+  const cfg = config(), detalhado = o.modoCliente !== 'resumido';
+  const L = [`*${cfg.empresa}*`, `Orçamento ${o.numero} · ${dataBR(o.criadoEm)}`, `Cliente: ${nomeCliente(o)}`, ''];
+  if (o.pecas.length) {
+    L.push('*Pedras*');
+    for (const p of o.pecas) {
+      L.push(`• ${qtdDe(p)} × ${p.nome} — ${p.materialNome}, ${medida(p.comp)} × ${medida(p.larg)} cm${detalhado ? ` — ${moeda(valorPeca(p))}` : ''}`);
+    }
+  }
+  for (const tipo of ['produto', 'servico']) {
+    const itens = o.itens.filter(it => it.tipo === tipo);
+    if (!itens.length) continue;
+    L.push(`*${GRUPOS[tipo].varios}*`);
+    for (const it of itens) L.push(`• ${it.qtd} × ${it.nome}${detalhado ? ` — ${moeda(it.preco * it.qtd)}` : ''}`);
+  }
+  L.push('');
+  if (o.frete) L.push(`Frete / instalação: ${moeda(o.frete)}`);
+  if (o.desconto) L.push(`Desconto: − ${moeda(o.desconto)}`);
+  L.push(`*Total: ${moeda(totalGeral(o))}*`);
+  L.push(`Válido por ${o.validadeDias || cfg.validadeDias} dias.`);
+  if (o.obs) L.push('', o.obs);
+  if (cfg.telefone) L.push('', `${cfg.empresa} · ${cfg.telefone}`);
+  return L.join('\n');
+}
+
+// Abre o WhatsApp com o texto pronto (no número do cliente, se houver). Quem envia é o usuário.
+function enviarOrcamento(o) {
+  const c = o.clienteId ? achar('clientes', o.clienteId) : null;
+  let fone = c ? String(c.telefone || '').replace(/\D/g, '') : '';
+  if (fone.length === 10 || fone.length === 11) fone = '55' + fone;
+  if (fone.length < 12) fone = '';
+  const texto = textoOrcamento(o);
+  if (!fone && navigator.share) navigator.share({ text: texto }).catch(() => {});
+  else window.open(`https://wa.me/${fone}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+  if (o.status === 'rascunho') {
+    o.status = 'enviado';
+    o.statusEm = new Date().toISOString();
+    gravar('orcamentos', o);
+    aviso('Marcado como enviado.');
+    redesenhar();
+  }
+}
+
+let imprimirAoAbrir = false;
+export const imprimirSePedido = () => {
+  if (!imprimirAoAbrir) return;
+  imprimirAoAbrir = false;
+  setTimeout(() => window.print(), 400);   // espera a folha aparecer
+};
+
 export const acoes = {
+  'enviar-orc': el => { const o = achar('orcamentos', el.dataset.id); if (o) enviarOrcamento(o); },
+  'imprimir-orc': el => { imprimirAoAbrir = true; ir(`#/o/${el.dataset.id}/cliente`); },
   'imprimir': () => window.print(),
   'modo-cliente': el => { const o = orcDaTela(); o.modoCliente = el.dataset.modo; gravar('orcamentos', o); redesenhar(); },
 };

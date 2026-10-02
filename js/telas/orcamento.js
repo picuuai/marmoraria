@@ -45,13 +45,32 @@ export function criarOrcamento(clienteId) {
 
 export const nomeCliente = o => (o.clienteId && achar('clientes', o.clienteId) ? achar('clientes', o.clienteId).nome : o.clienteNome) || 'Sem cliente';
 
+const ic = d => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONES = {
+  enviar: ic('<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>'),
+  imprimir: ic('<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>'),
+  corte: ic('<path d="M3 17L17 3l4 4L7 21z"/><path d="M14 6l2 2M11 9l2 2M8 12l2 2"/>'),
+  financeiro: ic('<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'),
+};
+
+// Atalhos do orçamento, sem precisar abrir: enviar, imprimir, corte e financeiro.
+// O financeiro só aparece no aparelho com acesso a custos e lucro.
+export const atalhosOrcamento = o => `
+  <button data-acao="enviar-orc" data-id="${o.id}">${ICONES.enviar}Enviar</button>
+  <button data-acao="imprimir-orc" data-id="${o.id}">${ICONES.imprimir}Imprimir</button>
+  <a class="botao" href="#/o/${o.id}/corte">${ICONES.corte}Corte</a>
+  ${pode('custos') ? `<a class="botao" href="#/o/${o.id}/interna">${ICONES.financeiro}Financeiro</a>` : ''}`;
+
 export function linhaOrcamento(o) {
-  return `<a class="card linha-orc" href="#/o/${o.id}">
-    <div class="info"><div class="nome">${esc(nomeCliente(o))}</div>
-      <div class="det">${esc(o.numero)} · ${dataBR(o.criadoEm)} · ${o.pecas.length} ${o.pecas.length === 1 ? 'pedra' : 'pedras'}</div></div>
-    ${chipStatus(o.status)}
-    <div class="valor">${moeda(totalGeral(o))}</div>
-  </a>`;
+  return `<div class="card orc">
+    <a class="linha-orc" href="#/o/${o.id}">
+      <div class="info"><div class="nome">${esc(nomeCliente(o))}</div>
+        <div class="det">${esc(o.numero)} · ${dataBR(o.criadoEm)} · ${o.pecas.length} ${o.pecas.length === 1 ? 'pedra' : 'pedras'}</div></div>
+      ${chipStatus(o.status)}
+      <div class="valor">${moeda(totalGeral(o))}</div>
+    </a>
+    <div class="acoes-orc">${atalhosOrcamento(o)}</div>
+  </div>`;
 }
 
 function listaFiltrada() {
@@ -180,9 +199,10 @@ export function telaOrcamento(id) {
       </div>
       <h2>Folhas</h2>
       <div class="grade-botoes">
-        <a class="botao" href="#/o/${o.id}/cliente"><b>Orçamento do cliente</b><small>Detalhado ou resumido</small></a>
+        <button class="botao" data-acao="enviar-orc" data-id="${o.id}"><b>Enviar ao cliente</b><small>Pelo WhatsApp</small></button>
+        <a class="botao" href="#/o/${o.id}/cliente"><b>Orçamento do cliente</b><small>Ver, imprimir ou PDF</small></a>
         <a class="botao" href="#/o/${o.id}/corte"><b>Folha de corte</b><small>Desenhos e medidas</small></a>
-        ${pode('custos') ? `<a class="botao" href="#/o/${o.id}/interna"><b>Folha interna</b><small>Custos e lucro</small></a>` : ''}
+        ${pode('custos') ? `<a class="botao" href="#/o/${o.id}/interna"><b>Financeiro</b><small>Custos e lucro</small></a>` : ''}
       </div>
       <h2>Este orçamento</h2>
       <div class="linha">

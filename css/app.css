@@ -273,6 +273,16 @@ button.pequeno { padding: 5px 12px; font-size: 13px; }
 .chip.st-aprovado { background: var(--ok-soft); color: var(--ok); }
 .chip.st-perdido { background: var(--danger-soft); color: var(--danger); }
 .linha-orc, .peca { gap: 12px; align-items: center; }
+/* orçamento na lista: linha que abre o orçamento e, embaixo, os atalhos */
+.card.orc { padding: 0; overflow: hidden; transition: border-color .15s; }
+.card.orc:hover { border-color: var(--accent-2); }
+.orc > a.linha-orc { display: flex; padding: 14px 16px; color: inherit; text-decoration: none; }
+.acoes-orc { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); background: var(--card-2); overflow-x: auto; }
+.acoes-orc button, .acoes-orc .botao {
+  flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 12px; font-size: 13px; border-radius: 10px; white-space: nowrap;
+}
+.acoes-orc svg { color: var(--accent-2); flex: none; }
 .linha-orc .info, .peca .info { flex: 1; min-width: 0; }
 .nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .det { font-size: 13px; color: var(--muted); }
@@ -286,7 +296,7 @@ button.pequeno { padding: 5px 12px; font-size: 13px; }
 .novo-cliente summary { cursor: pointer; color: var(--accent-2); font-size: 14px; font-weight: 500; }
 .novo-cliente[open] summary { margin-bottom: 10px; }
 .grade-botoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
-.grade-botoes .botao { text-align: left; padding: 14px; box-shadow: var(--shadow); }
+.grade-botoes .botao { text-align: left; padding: 14px; box-shadow: var(--shadow); display: block; width: 100%; }
 .grade-botoes b { display: block; }
 .grade-botoes small { color: var(--muted); font-weight: 400; }
 
