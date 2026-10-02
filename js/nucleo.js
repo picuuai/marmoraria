@@ -26,7 +26,14 @@ export function aviso(texto) {
 export const temaSalvo = () => { try { return localStorage.getItem('marmoraria-tema') || 'auto'; } catch (e) { return 'auto'; } };
 export const salvarTema = t => { try { localStorage.setItem('marmoraria-tema', t); } catch (e) {} };
 
-export function aplicarTema(tema = temaSalvo()) {
+export const fundoSalvo = () => { try { return localStorage.getItem('marmoraria-fundo') || 'aurora'; } catch (e) { return 'aurora'; } };
+export const salvarFundo = f => { try { localStorage.setItem('marmoraria-fundo', f); } catch (e) {} };
+
+// Claro ou escuro e fundo são de cada aparelho; a cor do tema é da marmoraria (vem dos ajustes)
+export function aplicarTema(cor) {
+  const tema = temaSalvo(), raiz = document.documentElement;
   const escuro = tema === 'escuro' || (tema !== 'claro' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.dataset.tema = escuro ? 'escuro' : 'claro';
+  raiz.dataset.tema = escuro ? 'escuro' : 'claro';
+  raiz.dataset.fundo = fundoSalvo();
+  if (cor) raiz.dataset.cor = cor;
 }

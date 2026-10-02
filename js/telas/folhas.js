@@ -8,6 +8,7 @@ import {
   totalPecas, totalItens, custoItens, totalGeral, resultado, descBordas, partesDaPeca,
 } from '../calc.js';
 import { nomeCliente } from './orcamento.js';
+import { logo } from '../marca.js';
 
 const orcDaTela = () => achar('orcamentos', location.hash.split('/')[2]);
 const botaoImprimir = '<button class="primario" data-acao="imprimir">Imprimir / PDF</button>';
@@ -25,12 +26,33 @@ function cabecalhoEmpresa(o) {
   const contato = [cfg.telefone, cfg.endereco, cfg.documento].filter(Boolean).map(esc).join(' · ');
   const c = o.clienteId ? achar('clientes', o.clienteId) : null;
   return `
-    <h1>${esc(cfg.empresa)}</h1>
-    ${contato ? `<div class="sub" style="margin-bottom:2px">${contato}</div>` : ''}
-    <div class="sub">Orçamento ${esc(o.numero)} · ${dataBR(o.criadoEm)} · válido por ${o.validadeDias || cfg.validadeDias} dias</div>
-    <div><b>Cliente:</b> ${esc(nomeCliente(o))}${c && c.telefone ? ' · ' + esc(c.telefone) : ''}</div>
-    ${c && c.endereco ? `<div class="sub" style="margin:2px 0 0">${esc(c.endereco)}</div>` : ''}`;
+    <div class="folha-topo">
+      <div class="folha-marca">
+        ${logo('folha')}
+        <div><h1>${esc(cfg.empresa)}</h1>${contato ? `<div class="sub">${contato}</div>` : ''}</div>
+      </div>
+      <div class="folha-num">
+        <small>Orçamento</small>
+        <b>${esc(o.numero)}</b>
+        <span>${dataBR(o.criadoEm)} · válido por ${o.validadeDias || cfg.validadeDias} dias</span>
+      </div>
+    </div>
+    <div class="folha-cliente">
+      <small>Cliente</small>
+      <b>${esc(nomeCliente(o))}</b>
+      ${c && (c.telefone || c.endereco) ? `<span>${[c.telefone, c.endereco].filter(Boolean).map(esc).join(' · ')}</span>` : ''}
+    </div>`;
 }
+
+// Cabeçalho menor das folhas de uso interno
+const cabecalhoInterno = (o, titulo, nota) => `
+  <div class="card folha cab-corte">
+    <div class="folha-marca">
+      ${logo('folha')}
+      <div><h1>${titulo}</h1>
+        <div class="sub">Orçamento ${esc(o.numero)} · ${esc(nomeCliente(o))} · ${dataBR(o.criadoEm)} · ${nota}</div></div>
+    </div>
+  </div>`;
 
 // ---------- orçamento do cliente
 
@@ -79,7 +101,7 @@ export function telaCliente(id) {
         ${resumido ? resumo : detalhes}
           ${o.frete ? `<div><span>Frete / instalação</span><span>${moeda(o.frete)}</span></div>` : ''}
           ${o.desconto ? `<div><span>Desconto</span><span>− ${moeda(o.desconto)}</span></div>` : ''}
-          <div class="forte"><span>Total</span><span>${moeda(totalGeral(o))}</span></div>
+          <div class="forte total-faixa"><span>Total</span><span>${moeda(totalGeral(o))}</span></div>
         </div>
         ${o.obs ? `<p class="obs"><b>Observações:</b> ${esc(o.obs).replace(/\n/g, '<br>')}</p>` : ''}
       </div>`,
@@ -120,10 +142,7 @@ export function telaCorte(id) {
       <div class="card nao-imprime">
         <label class="check"><input type="checkbox" data-opcao="imprimirResumo" ${comResumo ? 'checked' : ''}> Imprimir o resumo junto com os desenhos</label>
       </div>
-      <div class="card folha cab-corte">
-        <h1>Folha de corte</h1>
-        <div class="sub">Orçamento ${esc(o.numero)} · ${esc(nomeCliente(o))} · ${dataBR(o.criadoEm)} · medidas em cm</div>
-      </div>
+      ${cabecalhoInterno(o, 'Folha de corte', 'medidas em cm')}
       ${o.pecas.length ? '' : '<div class="card vazio">Este orçamento ainda não tem pedras.</div>'}
       <div class="grade-corte">
         ${o.pecas.map(p => `
@@ -152,10 +171,7 @@ export function telaInterna(id) {
   return {
     nav: 'orcamentos', titulo: 'Folha interna', voltar: `#/o/${id}`, topo: botaoImprimir.replace(' / PDF', ''), classe: 'folha-a4',
     corpo: `
-      <div class="card folha cab-corte">
-        <h1>Folha interna — custos e lucro</h1>
-        <div class="sub">Orçamento ${esc(o.numero)} · ${esc(nomeCliente(o))} · ${dataBR(o.criadoEm)} · uso da marmoraria, não enviar ao cliente</div>
-      </div>
+      ${cabecalhoInterno(o, 'Folha interna — custos e lucro', 'uso da marmoraria, não enviar ao cliente')}
       ${o.pecas.length ? `<h2>Pedras</h2>
       <div class="card rola"><table class="tabela">
         <tr><th>Peça</th><th class="n">Área</th><th class="n">Custo da pedra</th><th class="n">Venda da pedra</th><th class="n">Mão de obra</th><th class="n">Lucro</th></tr>

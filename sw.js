@@ -1,9 +1,9 @@
 // Guarda os arquivos do sistema no aparelho para ele abrir sem internet.
 // Ao publicar uma versão nova, troque o número abaixo para os aparelhos atualizarem.
-const VERSAO = 'marmoraria-v2';
+const VERSAO = 'marmoraria-v4';
 const ARQUIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'icone.svg', 'css/app.css',
-  'js/main.js', 'js/nucleo.js', 'js/util.js', 'js/padroes.js', 'js/db.js', 'js/calc.js', 'js/desenho.js', 'js/sinc.js',
+  'js/main.js', 'js/nucleo.js', 'js/util.js', 'js/padroes.js', 'js/db.js', 'js/calc.js', 'js/desenho.js', 'js/sinc.js', 'js/marca.js',
   'js/telas/orcamento.js', 'js/telas/folhas.js', 'js/telas/gestao.js',
 ];
 

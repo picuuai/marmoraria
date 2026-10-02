@@ -1,16 +1,19 @@
 // Início, clientes, cadastros e ajustes
 import { lista, achar, gravar, excluir, config, exportar, importar } from '../db.js';
 import { num, moeda, pct, emCampo, esc, novoId, agora, semAcento } from '../util.js';
-import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema } from '../nucleo.js';
+import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema, fundoSalvo, salvarFundo } from '../nucleo.js';
+import { logo, prepararLogo } from '../marca.js';
 import { amostra, atualizarTexturas } from '../desenho.js';
 import { LADOS, TIPOS_BORDA, RETO, ESQUADRIA, totalGeral, resultado } from '../calc.js';
 import { criarOrcamento, linhaOrcamento } from './orcamento.js';
-import { cartao as cartaoSinc } from '../sinc.js';
+import { cartao as cartaoSinc, carregarAparelhos, pode } from '../sinc.js';
 
 let buscaCliente = '';
 let focar = null;   // id do registro recém-criado, para pôr o cursor no nome
 
 // ---------- início
+
+const saudacao = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
 
 export function telaInicio() {
   const orcs = lista('orcamentos');
@@ -23,21 +26,26 @@ export function telaInicio() {
   const recentes = orcs.slice().sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm)).slice(0, 5);
   return {
     nav: 'inicio', titulo: 'Início',
-    topo: '<button class="primario" data-acao="novo-orc">+ Novo orçamento</button>',
+    topo: pode('orcamentos') ? '<button class="primario" data-acao="novo-orc">+ Novo orçamento</button>' : '',
     corpo: `
-      <div class="ola">
-        <h2 class="grande">${esc(config().empresa)}</h2>
-        <p>${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      <div class="heroi">
+        ${logo('grande')}
+        <div>
+          <small>${saudacao()}</small>
+          <b>${esc(config().empresa)}</b>
+          <span>${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        </div>
       </div>
-      <div class="kpis">
+      ${pode('orcamentos') ? '' : '<div class="card vazio">Este aparelho não tem acesso aos orçamentos.</div>'}
+      <div class="kpis" ${pode('orcamentos') ? '' : 'hidden'}>
         ${kpi('Em aberto', moeda(soma(abertos, totalGeral)), `${abertos.length} ${abertos.length === 1 ? 'orçamento' : 'orçamentos'} aguardando`)}
         ${kpi('Aprovado no mês', moeda(soma(aprovadosMes, totalGeral)), `${aprovadosMes.length} ${aprovadosMes.length === 1 ? 'orçamento' : 'orçamentos'}`)}
-        ${kpi('Lucro bruto no mês', moeda(soma(aprovadosMes, o => resultado(o).lucro)), 'dos orçamentos aprovados')}
+        ${pode('custos') ? kpi('Lucro bruto no mês', moeda(soma(aprovadosMes, o => resultado(o).lucro)), 'dos orçamentos aprovados') : ''}
         ${kpi('Taxa de aprovação', decididos.length ? pct(decididos.filter(o => o.status === 'aprovado').length / decididos.length * 100) : '—', `${decididos.length} ${decididos.length === 1 ? 'orçamento decidido' : 'orçamentos decididos'}`)}
       </div>
-      <h2>Últimos orçamentos</h2>
+      ${pode('orcamentos') ? `<h2>Últimos orçamentos</h2>
       ${recentes.map(linhaOrcamento).join('') || '<div class="card vazio">Nenhum orçamento ainda.<br>Toque em “Novo orçamento” para começar.</div>'}
-      ${orcs.length > 5 ? '<a class="botao largo" href="#/orcamentos">Ver todos</a>' : ''}`,
+      ${orcs.length > 5 ? '<a class="botao largo" href="#/orcamentos">Ver todos</a>' : ''}` : ''}`,
   };
 }
 
@@ -199,15 +207,30 @@ export function telaCadastros(aba) {
 
 // ---------- ajustes
 
+const CORES = [['esmeralda', 'Esmeralda'], ['oceano', 'Oceano'], ['grafite', 'Grafite'], ['vinho', 'Vinho'], ['ametista', 'Ametista'], ['cobre', 'Cobre']];
+
 export function telaAjustes() {
   const c = config();
   const campo = (prop, rotulo, extra = '', numero = false) => `<div><label for="a-${prop}">${rotulo}</label>
     <input id="a-${prop}" data-cfg="${prop}"${numero ? ' data-num' : ''} value="${esc(c[prop] ?? '')}" ${extra}></div>`;
+  const completo = pode('ajustes');   // sem esse acesso, o aparelho só ajusta a própria aparência e a conexão
   return {
     nav: 'ajustes', titulo: 'Ajustes',
+    depois: carregarAparelhos,
     corpo: `
+      ${completo ? `
       <h2>Dados da marmoraria</h2>
       <div class="card campos">
+        <div class="logo-ajuste">
+          ${logo('grande')}
+          <div>
+            <b>Logo</b>
+            <p class="nota" style="margin:2px 0 8px">Aparece no menu, na tela inicial e no topo das folhas. De preferência com fundo transparente (PNG).</p>
+            <label class="botao pequeno" style="margin:0" for="arq-logo">${config().logo ? 'Trocar a logo' : 'Enviar a logo'}</label>
+            ${config().logo ? '<button class="pequeno perigo" data-acao="remover-logo">Remover</button>' : ''}
+            <input id="arq-logo" type="file" accept="image/*" data-logo hidden>
+          </div>
+        </div>
         ${campo('empresa', 'Nome (aparece no orçamento)')}
         <div class="linha">${campo('telefone', 'Telefone / WhatsApp', 'inputmode="tel"')}${campo('documento', 'CNPJ ou CPF')}</div>
         ${campo('endereco', 'Endereço')}
@@ -219,16 +242,27 @@ export function telaAjustes() {
           ${campo('alturaEspelho', 'Altura do espelho (cm)', 'inputmode="decimal"', true)}
           ${campo('alturaSaia', 'Altura da saia (cm)', 'inputmode="decimal"', true)}
         </div>
-      </div>
+      </div>` : ''}
       <h2>Aparência</h2>
       <div class="card">
+        ${completo ? `<label>Cor da marmoraria (vale para todos os aparelhos e para as folhas)</label>
+        <div class="cores" style="margin-bottom:14px">
+          ${CORES.map(([v, n]) => `<button class="${(c.corTema || 'esmeralda') === v ? 'ativo' : ''}" data-acao="cor-tema" data-cor="${v}" aria-label="${n}" title="${n}"><i data-cor="${v}"></i><span>${n}</span></button>`).join('')}
+        </div>` : ''}
+        <label>Claro ou escuro (neste aparelho)</label>
         <div class="seg tres">
           ${[['auto', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']].map(([v, n]) =>
             `<button class="${temaSalvo() === v ? 'ativo' : ''}" data-acao="tema" data-tema="${v}">${n}</button>`).join('')}
         </div>
+        <label style="margin-top:14px">Fundo (neste aparelho)</label>
+        <div class="seg quatro">
+          ${[['liso', 'Liso'], ['aurora', 'Degradê'], ['marmore', 'Mármore'], ['granito', 'Granito']].map(([v, n]) =>
+            `<button class="${fundoSalvo() === v ? 'ativo' : ''}" data-acao="fundo" data-fundo="${v}">${n}</button>`).join('')}
+        </div>
       </div>
       <h2>Computador e celular</h2>
       ${cartaoSinc()}
+      ${completo ? `
       <h2>Cópia de segurança</h2>
       <div class="card">
         <p class="dica esq" style="margin-top:0">Baixe uma cópia de vez em quando, mesmo com a sincronização ligada.</p>
@@ -237,7 +271,7 @@ export function telaAjustes() {
           <label class="botao" for="arq-copia">Restaurar cópia</label>
         </div>
         <input id="arq-copia" type="file" accept=".json,application/json" data-importar hidden>
-      </div>`,
+      </div>` : ''}`,
   };
 }
 
@@ -268,6 +302,16 @@ export function entrada(el) {
 }
 
 export function mudanca(el) {
+  if ('logo' in el.dataset && el.files[0]) {
+    prepararLogo(el.files[0]).then(dados => {
+      const c = config();
+      c.logo = dados;
+      gravar('config', c);
+      aviso('Logo atualizada.');
+      redesenhar();
+    }).catch(e => aviso(e.message || 'Não foi possível usar esta imagem.'));
+    return;
+  }
   if (!('importar' in el.dataset) || !el.files[0]) return;
   el.files[0].text().then(texto => {
     importar(texto);
@@ -308,9 +352,18 @@ export const acoes = {
     redesenhar();
   },
 
-  'tema': el => {
-    salvarTema(el.dataset.tema);
-    aplicarTema();
+  'tema': el => { salvarTema(el.dataset.tema); redesenhar(); },
+  'fundo': el => { salvarFundo(el.dataset.fundo); redesenhar(); },
+  'cor-tema': el => {
+    const c = config();
+    c.corTema = el.dataset.cor;
+    gravar('config', c);
+    redesenhar();
+  },
+  'remover-logo': () => {
+    const c = config();
+    c.logo = '';
+    gravar('config', c);
     redesenhar();
   },
   'baixar-copia': () => {

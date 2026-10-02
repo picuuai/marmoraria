@@ -82,6 +82,14 @@ export function importar(texto) {
   aoMudar();
 }
 
+// Apaga os dados deste aparelho (usado quando ele é desconectado da sincronização)
+export async function apagarTudo() {
+  for (const l of LOJAS) {
+    dados[l] = [];
+    if (idb) await pedido(idb.transaction(l, 'readwrite').objectStore(l).clear());
+  }
+}
+
 // Tudo o que está guardado, inclusive os registros marcados como excluídos
 export const tudo = () => dados;
 

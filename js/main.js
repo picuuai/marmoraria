@@ -7,6 +7,7 @@ import * as orc from './telas/orcamento.js';
 import * as folhas from './telas/folhas.js';
 import * as gestao from './telas/gestao.js';
 import * as sinc from './sinc.js';
+import { logo } from './marca.js';
 
 const modulos = [orc, folhas, gestao, sinc];
 const app = document.getElementById('app');
@@ -19,10 +20,26 @@ const NAV = [
   { id: 'cadastros', hash: '#/cadastros/materiais', nome: 'Cadastros', icone: icone('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.500l9 5 9-5"/><path d="M3 17l9 5 9-5"/>') },
   { id: 'ajustes', hash: '#/ajustes', nome: 'Ajustes', icone: icone('<circle cx="12" cy="12" r="3"/><path d="M12 2.500v3M12 18.500v3M2.500 12h3M18.500 12h3M5.300 5.300l2.100 2.100M16.600 16.600l2.100 2.100M5.300 18.700l2.100-2.100M16.600 7.400l2.100-2.100"/>') },
 ];
-const LOGO = '<svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="var(--accent)"/><path d="M6 19 L14 8 L22 19 Z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 22.500 H22" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>';
+
+// Módulo que cada tela exige (null = liberada para todo aparelho conectado)
+function moduloDaRota(p) {
+  if (p[0] === 'orcamentos') return 'orcamentos';
+  if (p[0] === 'o') return p[2] === 'interna' ? 'custos' : 'orcamentos';
+  if (p[0] === 'clientes' || p[0] === 'cliente') return 'clientes';
+  if (p[0] === 'cadastros') return 'cadastros';
+  return null;
+}
+const MODULO_DO_MENU = { orcamentos: 'orcamentos', clientes: 'clientes', cadastros: 'cadastros' };
 
 function rota() {
   const p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+  const modulo = moduloDaRota(p);
+  if (modulo && !sinc.pode(modulo)) {
+    return {
+      nav: '', titulo: 'Sem acesso', voltar: '#/',
+      corpo: `<div class="card vazio">Este aparelho não tem acesso a <b>${sinc.MODULOS[modulo]}</b>.<br>O acesso é liberado no computador principal, em Ajustes → Aparelhos autorizados.</div>`,
+    };
+  }
   switch (p[0]) {
     case undefined: return gestao.telaInicio();
     case 'orcamentos': return orc.telaLista();
@@ -46,13 +63,21 @@ function rota() {
 }
 
 function desenhar(manter) {
+  if (!config()) return;   // dados sendo apagados (aparelho desconectado): a página recarrega em seguida
+  aplicarTema(config().corTema || 'esmeralda');
+  // aparelho não autorizado: só a tela de bloqueio, sem menu e sem dados
+  if (sinc.bloqueado()) {
+    app.innerHTML = sinc.telaBloqueio();
+    document.body.classList.remove('com-rodape');
+    return;
+  }
   const t = rota();
-  if (!t) { location.hash = '#/orcamentos'; return; }
-  const links = NAV.map(n => `<a href="${n.hash}" class="${n.id === t.nav ? 'ativo' : ''}" ${n.id === t.nav ? 'aria-current="page"' : ''}>${n.icone}<span>${n.nome}</span></a>`).join('');
+  if (!t) { location.hash = '#/'; return; }
+  const links = NAV.filter(n => !MODULO_DO_MENU[n.id] || sinc.pode(MODULO_DO_MENU[n.id])).map(n => `<a href="${n.hash}" class="${n.id === t.nav ? 'ativo' : ''}" ${n.id === t.nav ? 'aria-current="page"' : ''}>${n.icone}<span>${n.nome}</span></a>`).join('');
   const rolagem = window.scrollY;
   app.innerHTML = `
     <nav class="lateral nao-imprime" aria-label="Menu">
-      <div class="marca">${LOGO}<b>${esc(config().empresa)}</b></div>
+      <div class="marca">${logo()}<b>${esc(config().empresa)}</b></div>
       ${links}
     </nav>
     <div class="conteudo">
@@ -89,12 +114,12 @@ app.addEventListener('click', e => {
 app.addEventListener('input', e => { for (const m of modulos) if (m.entrada) m.entrada(e.target, e); });
 app.addEventListener('change', e => { for (const m of modulos) if (m.mudanca) m.mudanca(e.target, e); });
 app.addEventListener('keydown', e => { for (const m of modulos) if (m.tecla) m.tecla(e); });
-window.addEventListener('hashchange', () => desenhar(false));
+window.addEventListener('hashchange', () => { if (!sinc.conectarPeloLink()) desenhar(false); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema());
 
 const guardou = await abrir();
 definirRedesenho(desenhar);
-aplicarTema();
+aplicarTema(config().corTema || 'esmeralda');
 atualizarTexturas();
 sinc.iniciar();
 desenhar(false);

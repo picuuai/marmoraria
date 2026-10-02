@@ -3,6 +3,7 @@ import { lista, achar, gravar, excluir, config } from '../db.js';
 import { num, moeda, m2, pct, emCampo, esc, novoId, agora, dataBR, semAcento } from '../util.js';
 import { redesenhar, ir, aviso } from '../nucleo.js';
 import { desenho, amostra } from '../desenho.js';
+import { pode } from '../sinc.js';
 import {
   LADOS, TIPOS_BORDA, GRUPOS, RETO, temFaixa, compBorda, areaTampo, areaBordas, areaPeca, valorMaterial,
   acabDaBorda, acabamentoMaior, fixarPercentuais, percAcab, maoObraCalc, maoObraDe, percMaoObra, maoObraAlterada,
@@ -181,7 +182,7 @@ export function telaOrcamento(id) {
       <div class="grade-botoes">
         <a class="botao" href="#/o/${o.id}/cliente"><b>Orçamento do cliente</b><small>Detalhado ou resumido</small></a>
         <a class="botao" href="#/o/${o.id}/corte"><b>Folha de corte</b><small>Desenhos e medidas</small></a>
-        <a class="botao" href="#/o/${o.id}/interna"><b>Folha interna</b><small>Custos e lucro</small></a>
+        ${pode('custos') ? `<a class="botao" href="#/o/${o.id}/interna"><b>Folha interna</b><small>Custos e lucro</small></a>` : ''}
       </div>
       <h2>Este orçamento</h2>
       <div class="linha">
