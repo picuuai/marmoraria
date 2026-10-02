@@ -1,0 +1,14 @@
+{
+  "name": "Marmoraria — Orçamentos",
+  "short_name": "Marmoraria",
+  "description": "Orçamentos por medidas, folha de corte e controle da marmoraria",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f2",
+  "theme_color": "#0e6b62",
+  "icons": [
+    { "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
