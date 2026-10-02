@@ -393,6 +393,8 @@ export function cartao() {
   return `
     <div class="card">
       <div id="sinc-caixa">${caixaHTML()}</div>
+      <label for="sinc-nome" style="margin-top:12px">Nome deste aparelho (é como ele aparece na lista de aparelhos autorizados)</label>
+      <input id="sinc-nome" data-apar-nome="${meuAparelho().id}" value="${esc(meuAparelho().nome)}" placeholder="Ex.: Celular do João" autocomplete="off">
       <div class="linha" style="margin-top:12px">
         <button class="primario" data-acao="sinc-agora">Sincronizar agora</button>
         ${principal ? '<button data-acao="sinc-qr">Conectar outro aparelho</button>' : ''}
@@ -404,7 +406,7 @@ export function cartao() {
     ${principal ? `
     <h2>Aparelhos autorizados</h2>
     <div class="card">
-      <p class="dica esq" style="margin-top:0">Marque o que cada aparelho pode acessar. “Desconectar” tira o aparelho da sincronização e apaga dele os dados da marmoraria na próxima vez que ele abrir o sistema com internet. As mudanças chegam ao aparelho em até 5 minutos.</p>
+      <p class="dica esq" style="margin-top:0">Toque no nome de um aparelho para renomear (por exemplo, “Celular do João”). Marque o que cada aparelho pode acessar. “Desconectar” tira o aparelho da sincronização e apaga dele os dados da marmoraria na próxima vez que ele abrir o sistema com internet. As mudanças chegam ao aparelho em até 5 minutos.</p>
       <div id="sinc-aparelhos"><div class="nota">Carregando…</div></div>
       <button class="link" data-acao="apar-atualizar">Atualizar a lista</button>
     </div>
@@ -549,6 +551,8 @@ export function mudanca(el) {
   alterarAparelhos(l => { if (l[id]) l[id].nome = nome; return l; })
     .then(() => {
       if (id === meuAparelho().id) { try { localStorage.setItem(CHAVE_APAR, JSON.stringify({ id, nome })); } catch (e) {} }
+      // o mesmo nome pode estar em dois campos da tela (o deste aparelho e o da lista)
+      for (const campo of document.querySelectorAll(`[data-apar-nome="${id}"]`)) if (campo !== el) campo.value = nome;
       aviso('Nome atualizado.');
     })
     .catch(e => aviso('Erro: ' + e.message));
