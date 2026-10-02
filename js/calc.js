@@ -60,6 +60,26 @@ export function fixarPercentuais(p) {
   p.percs = percs;
 }
 
+// --- preços do cadastro
+// Rascunho acompanha o cadastro; orçamento enviado ou aprovado fica com os preços do dia,
+// e só muda se o usuário pedir para atualizar.
+
+// Traz para a peça o preço e o custo atuais do material e os percentuais atuais dos acabamentos
+export function atualizarPeca(p) {
+  const m = lista('materiais').find(x => x.id === p.materialId);
+  if (m) Object.assign(p, { materialNome: m.nome, precoM2: m.preco, custoM2: m.custo, cor: m.cor });
+  p.percs = {};
+  fixarPercentuais(p);
+  return p;
+}
+// A peça daria outro valor (ou outro custo) com os preços de hoje?
+export function pecaDesatualizada(p) {
+  const nova = atualizarPeca(JSON.parse(JSON.stringify(p)));
+  return Math.abs(valorPeca(nova) - valorPeca(p)) > 0.005 || Math.abs(custoPedra(nova) - custoPedra(p)) > 0.005;
+}
+export const orcDesatualizado = o => o.pecas.some(pecaDesatualizada);
+export function atualizarOrcamento(o) { o.pecas.forEach(atualizarPeca); }
+
 // --- mão de obra
 export const maoObraCalc = p => valorMaterial(p) * acabamentoMaior(p).perc / 100;
 // moFator guarda o ajuste feito à mão neste orçamento (valor digitado ÷ valor calculado),

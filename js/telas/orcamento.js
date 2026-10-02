@@ -7,7 +7,7 @@ import { pode } from '../sinc.js';
 import {
   LADOS, TIPOS_BORDA, GRUPOS, RETO, temFaixa, compBorda, areaTampo, areaBordas, areaPeca, valorMaterial,
   acabDaBorda, acabamentoMaior, fixarPercentuais, percAcab, maoObraCalc, maoObraDe, percMaoObra, maoObraAlterada,
-  fatorMaoObra, valorPeca, qtdDe, totalGeral,
+  fatorMaoObra, valorPeca, qtdDe, totalGeral, orcDesatualizado, atualizarOrcamento,
 } from '../calc.js';
 
 export const STATUS = { rascunho: 'Rascunho', enviado: 'Enviado', aprovado: 'Aprovado', perdido: 'Não aprovado' };
@@ -39,6 +39,13 @@ export function criarOrcamento(clienteId) {
   cfg.proximoNumero += 1;
   gravar('config', cfg);
   return o;
+}
+
+// Rascunhos acompanham o cadastro: se um preço ou percentual mudou, eles passam a usar o valor novo
+export function atualizarRascunhos() {
+  for (const o of lista('orcamentos')) {
+    if (o.status === 'rascunho' && o.pecas.length && orcDesatualizado(o)) { atualizarOrcamento(o); gravar('orcamentos', o); }
+  }
 }
 
 // ---------- lista de orçamentos
@@ -150,6 +157,14 @@ export function telaOrcamento(id) {
   const o = achar('orcamentos', id);
   if (!o) return null;
   rascunho = null; bordaSel = null;
+  // rascunho acompanha o cadastro; depois de enviado, os preços só mudam se o usuário pedir
+  const mudou = o.pecas.length > 0 && orcDesatualizado(o);
+  if (mudou && o.status === 'rascunho') { atualizarOrcamento(o); gravar('orcamentos', o); }
+  const avisoPrecos = mudou && o.status === 'enviado' ? `
+    <div class="card aviso-precos">
+      <div><b>Os preços do cadastro mudaram</b><span>Este orçamento já foi enviado e continua com os valores do dia em que foi feito.</span></div>
+      <button data-acao="atualizar-precos" data-confirma="Tocar de novo para atualizar">Atualizar preços</button>
+    </div>` : '';
   const clientes = lista('clientes').sort((a, b) => a.nome.localeCompare(b.nome));
   const pecas = o.pecas.map(p => `
     <a class="card peca" href="#/o/${o.id}/p/${p.id}">
@@ -164,6 +179,7 @@ export function telaOrcamento(id) {
     nav: 'orcamentos', titulo: `Orçamento ${esc(o.numero)}`, voltar: '#/orcamentos',
     corpo: `
       ${cartaoSituacao(o)}
+      ${avisoPrecos}
       <div class="card">
         <label for="cliente">Cliente</label>
         <select id="cliente" data-campo="clienteId">
@@ -448,6 +464,13 @@ export function entrada(el) {
 export const acoes = {
   'novo-orc': () => ir('#/o/' + criarOrcamento().id),
   'filtro-status': el => { filtro.status = el.dataset.status; redesenhar(); },
+  'atualizar-precos': () => {
+    const o = orcDaTela();
+    atualizarOrcamento(o);
+    gravar('orcamentos', o);
+    aviso('Preços atualizados pelo cadastro.');
+    redesenhar();
+  },
   'situacao': el => {
     const o = orcDaTela();
     o.status = el.dataset.status;

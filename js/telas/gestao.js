@@ -5,7 +5,7 @@ import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema, fundoSalvo, 
 import { logo, prepararLogo } from '../marca.js';
 import { amostra, atualizarTexturas } from '../desenho.js';
 import { LADOS, TIPOS_BORDA, RETO, ESQUADRIA, totalGeral, resultado } from '../calc.js';
-import { criarOrcamento, linhaOrcamento } from './orcamento.js';
+import { criarOrcamento, linhaOrcamento, atualizarRascunhos } from './orcamento.js';
 import { cartao as cartaoSinc, carregarAparelhos, pode } from '../sinc.js';
 
 let buscaCliente = '';
@@ -197,7 +197,7 @@ export function telaCadastros(aba) {
     nav: 'cadastros', titulo: 'Cadastros',
     corpo: `
       <div class="chips">${Object.keys(ABAS).map(a => `<a class="${a === aba ? 'ativo' : ''}" href="#/cadastros/${a}">${ABAS[a]}</a>`).join('')}</div>
-      <p class="dica esq">Mudanças aqui valem para os próximos orçamentos. Os que já existem guardam os preços do dia em que foram feitos.</p>
+      <p class="dica esq">Mudanças aqui valem para os próximos orçamentos e para os que estão em rascunho. Os já enviados ou aprovados guardam os preços do dia em que foram feitos.</p>
       ${conteudo}`,
     depois: () => {
       if (!focar) return;
@@ -311,6 +311,8 @@ export function entrada(el) {
     porCaminho(reg, el.dataset.prop, 'num' in el.dataset ? num(el.value) : el.value);
     gravar(el.dataset.cad, reg);
     if (el.dataset.cad === 'materiais' && (el.dataset.prop === 'cor' || el.dataset.prop === 'textura')) atualizarTexturas();
+    // preço ou percentual alterado: os orçamentos em rascunho passam a usar o valor novo
+    if (el.dataset.cad === 'materiais' || el.dataset.cad === 'acabamentos') atualizarRascunhos();
   } else if (el.dataset.cfg) {
     const c = config();
     c[el.dataset.cfg] = 'num' in el.dataset ? num(el.value) : el.value;
