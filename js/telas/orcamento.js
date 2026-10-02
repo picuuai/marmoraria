@@ -199,7 +199,7 @@ export function telaOrcamento(id) {
       </div>
       <h2>Folhas</h2>
       <div class="grade-botoes">
-        <button class="botao" data-acao="enviar-orc" data-id="${o.id}"><b>Enviar ao cliente</b><small>Pelo WhatsApp</small></button>
+        <button class="botao" data-acao="enviar-orc" data-id="${o.id}"><b>Enviar ao cliente</b><small>PDF pelo WhatsApp</small></button>
         <a class="botao" href="#/o/${o.id}/cliente"><b>Orçamento do cliente</b><small>Ver, imprimir ou PDF</small></a>
         <a class="botao" href="#/o/${o.id}/corte"><b>Folha de corte</b><small>Desenhos e medidas</small></a>
         ${pode('custos') ? `<a class="botao" href="#/o/${o.id}/interna"><b>Financeiro</b><small>Custos e lucro</small></a>` : ''}

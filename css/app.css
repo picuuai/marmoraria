@@ -495,13 +495,16 @@ table.tabela .soma td { font-weight: 700; border-bottom: 0; }
 /* ---------- impressão (A4) ---------- */
 @page { size: A4; margin: 12mm; }
 @media print {
+  /* a folha impressa é sempre clara, mesmo com o aparelho no modo escuro */
   :root, :root[data-tema="escuro"] {
+    color-scheme: light; background: #fff;
     --bg: #fff; --card: #fff; --card-2: #f2f2f2; --ink: #000; --muted: #333; --line: #bbb;
     --stone-line: #000; --gold: #b8873a; --accent: var(--p1); --accent-2: var(--p1); --accent-soft: var(--ps); --shadow: none;
   }
   body, :root[data-fundo] body { background: #fff; }
   .nao-imprime, #aviso { display: none !important; }
-  .card { background: #fff; }
+  .card { background: #fff !important; color: #000; }
+  .folha-cliente { background: var(--ps) !important; }
   .conteudo { margin-left: 0; }
   main { padding: 0; max-width: none; animation: none; }
   .card { border: 0; padding: 0; box-shadow: none; break-inside: avoid; margin-bottom: 4mm; }
