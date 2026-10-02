@@ -1,7 +1,7 @@
 // Início, clientes, cadastros e ajustes
 import { lista, achar, gravar, excluir, config, exportar, importar } from '../db.js';
 import { num, moeda, pct, emCampo, esc, novoId, agora, semAcento } from '../util.js';
-import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema, fundoSalvo, salvarFundo } from '../nucleo.js';
+import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema, fundoSalvo, salvarFundo, instalacao, jaInstalado } from '../nucleo.js';
 import { logo, prepararLogo } from '../marca.js';
 import { amostra, atualizarTexturas } from '../desenho.js';
 import { LADOS, TIPOS_BORDA, RETO, ESQUADRIA, totalGeral, resultado } from '../calc.js';
@@ -36,6 +36,9 @@ export function telaInicio() {
           <span>${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
         </div>
       </div>
+      ${instalacao.evento && !jaInstalado() ? `<div class="card instalar">
+        <div><b>Instalar o aplicativo</b><span>Abre direto da tela inicial, em tela cheia.</span></div>
+        <button class="primario" data-acao="instalar">Instalar</button></div>` : ''}
       ${pode('orcamentos') ? '' : '<div class="card vazio">Este aparelho não tem acesso aos orçamentos.</div>'}
       <div class="kpis" ${pode('orcamentos') ? '' : 'hidden'}>
         ${kpi('Em aberto', moeda(soma(abertos, totalGeral)), `${abertos.length} ${abertos.length === 1 ? 'orçamento' : 'orçamentos'} aguardando`)}
@@ -207,6 +210,19 @@ export function telaCadastros(aba) {
 
 // ---------- ajustes
 
+function cartaoInstalar() {
+  if (jaInstalado()) return '<p class="dica esq" style="margin:0">O aplicativo já está instalado neste aparelho.</p>';
+  if (instalacao.evento) return '<div class="instalar"><div><b>Instalar o aplicativo</b><span>Abre direto da tela inicial, em tela cheia.</span></div><button class="primario" data-acao="instalar">Instalar</button></div>';
+  const ua = navigator.userAgent;
+  const passo = /iPhone|iPad/.test(ua)
+    ? 'No <b>Safari</b>, toque no botão <b>Compartilhar</b> (o quadrado com a seta para cima) e depois em <b>Adicionar à Tela de Início</b>. No iPhone a instalação só funciona pelo Safari.'
+    : /Android/.test(ua)
+      ? 'No <b>Chrome</b>, toque nos <b>três pontinhos</b> no canto de cima e depois em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.'
+      : 'No <b>Chrome</b> ou no <b>Edge</b>, clique no ícone de instalar no fim da barra de endereço, ou abra o menu e escolha <b>Instalar</b>.';
+  return `<p class="dica esq" style="margin:0">${passo}</p>
+    <p class="nota">O botão de instalar aparece aqui sozinho quando o navegador permite. Ele só funciona no endereço da internet (não em <code>localhost</code> aberto por outro aparelho).</p>`;
+}
+
 const CORES = [['esmeralda', 'Esmeralda'], ['oceano', 'Oceano'], ['grafite', 'Grafite'], ['vinho', 'Vinho'], ['ametista', 'Ametista'], ['cobre', 'Cobre']];
 
 export function telaAjustes() {
@@ -260,6 +276,8 @@ export function telaAjustes() {
             `<button class="${fundoSalvo() === v ? 'ativo' : ''}" data-acao="fundo" data-fundo="${v}">${n}</button>`).join('')}
         </div>
       </div>
+      <h2>Instalar no aparelho</h2>
+      <div class="card">${cartaoInstalar()}</div>
       <h2>Computador e celular</h2>
       ${cartaoSinc()}
       ${completo ? `
@@ -352,6 +370,13 @@ export const acoes = {
     redesenhar();
   },
 
+  'instalar': async () => {
+    if (!instalacao.evento) return;
+    instalacao.evento.prompt();
+    await instalacao.evento.userChoice.catch(() => {});
+    instalacao.evento = null;
+    redesenhar();
+  },
   'tema': el => { salvarTema(el.dataset.tema); redesenhar(); },
   'fundo': el => { salvarFundo(el.dataset.fundo); redesenhar(); },
   'cor-tema': el => {

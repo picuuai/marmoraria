@@ -239,6 +239,10 @@ body.com-rodape main { padding-bottom: 120px; }
 .heroi span:not(.logo)::first-letter { text-transform: uppercase; }
 .heroi .logo { position: relative; z-index: 1; }
 
+.instalar { display: flex; align-items: center; gap: 12px; }
+.instalar > div { flex: 1; display: flex; flex-direction: column; }
+.instalar span { font-size: 13px; color: var(--muted); }
+
 /* logo da marmoraria */
 .logo { display: inline-grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 12px; overflow: hidden; background: #fff; }
 .logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }

@@ -1,8 +1,8 @@
 // Guarda os arquivos do sistema no aparelho para ele abrir sem internet.
 // Ao publicar uma versão nova, troque o número abaixo para os aparelhos atualizarem.
-const VERSAO = 'marmoraria-v4';
+const VERSAO = 'marmoraria-v5';
 const ARQUIVOS = [
-  './', 'index.html', 'manifest.webmanifest', 'icone.svg', 'css/app.css',
+  './', 'index.html', 'manifest.webmanifest', 'icone.svg', 'icone-192.png', 'icone-512.png', 'icone-mascara-512.png', 'icone-apple.png', 'css/app.css',
   'js/main.js', 'js/nucleo.js', 'js/util.js', 'js/padroes.js', 'js/db.js', 'js/calc.js', 'js/desenho.js', 'js/sinc.js', 'js/marca.js',
   'js/telas/orcamento.js', 'js/telas/folhas.js', 'js/telas/gestao.js',
 ];
@@ -20,8 +20,10 @@ self.addEventListener('activate', e => {
 // Com internet busca a versão mais nova e atualiza a cópia guardada; sem internet usa a cópia
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  // 'no-cache' faz o navegador conferir com o servidor se o arquivo mudou, para não
+  // misturar arquivos antigos e novos depois de uma atualização
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: 'no-cache' })
       .then(resp => {
         const copia = resp.clone();
         caches.open(VERSAO).then(c => c.put(e.request, copia));

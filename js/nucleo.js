@@ -22,6 +22,12 @@ export function aviso(texto) {
   relogio = setTimeout(() => el.classList.remove('visivel'), 2600);
 }
 
+// Instalação como aplicativo: o navegador avisa quando dá para instalar (Chrome, Edge, Samsung)
+export const instalacao = { evento: null };
+export const jaInstalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); instalacao.evento = e; redesenho(true); });
+addEventListener('appinstalled', () => { instalacao.evento = null; redesenho(true); });
+
 // O tema é uma preferência de cada aparelho: fica fora dos dados sincronizados
 export const temaSalvo = () => { try { return localStorage.getItem('marmoraria-tema') || 'auto'; } catch (e) { return 'auto'; } };
 export const salvarTema = t => { try { localStorage.setItem('marmoraria-tema', t); } catch (e) {} };
