@@ -12,6 +12,35 @@ export function ir(hash) {
   else location.hash = hash;
 }
 
+// Janela de pergunta no meio da tela. Devolve true (botão principal) ou false (o outro, Esc ou fora).
+// Com ler(janela), o botão principal devolve o que ler retornar (para janelas com campos).
+let janelaAberta = false;
+export function perguntar({ titulo, corpo, sim = 'Confirmar', nao = 'Cancelar', ler }) {
+  if (janelaAberta) return Promise.resolve(false);
+  janelaAberta = true;
+  return new Promise(resolver => {
+    const d = document.createElement('dialog');
+    d.className = 'janela';
+    d.innerHTML = `<h2>${titulo}</h2><div class="janela-corpo">${corpo}</div>
+      <div class="linha"><button value="nao">${nao}</button><button class="primario" value="sim">${sim}</button></div>`;
+    const fechar = resposta => {
+      const valor = resposta && ler ? ler(d) : resposta;
+      janelaAberta = false; d.remove(); resolver(valor);
+    };
+    d.addEventListener('click', e => {
+      const r = d.getBoundingClientRect();
+      const fora = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      if (e.target === d && fora) fechar(false);                           // tocou fora da janela
+      else if (e.target.closest('button')) fechar(e.target.closest('button').value === 'sim');
+    });
+    d.addEventListener('cancel', e => { e.preventDefault(); fechar(false); });   // tecla Esc
+    document.body.appendChild(d);
+    d.showModal();
+    const campo = d.querySelector('.janela-corpo input');
+    if (campo) campo.focus();
+  });
+}
+
 // Aviso rápido no rodapé da tela
 let relogio = null;
 export function aviso(texto) {

@@ -49,6 +49,17 @@ export const TIPOS = [
   { id: 't8', nome: 'Outra peça', comp: 100, larg: 50, bordas: { fundo: lado(), frente: lado(), esquerda: lado(), direita: lado() } },
 ];
 
+// Formas de pagamento. taxa = % que a maquininha ou o banco desconta (0 = sem taxa)
+export const FORMAS = [
+  { id: 'f1', nome: 'Pix', taxa: 0 },
+  { id: 'f2', nome: 'Dinheiro', taxa: 0 },
+  { id: 'f3', nome: 'Cartão de débito', taxa: 0 },
+  { id: 'f4', nome: 'Cartão de crédito', taxa: 0 },
+  { id: 'f5', nome: 'Boleto', taxa: 0 },
+  { id: 'f6', nome: 'Transferência', taxa: 0 },
+  { id: 'f7', nome: 'Cheque', taxa: 0 },
+];
+
 export const CONFIG = {
   id: 'config',
   empresa: 'Sua Marmoraria',
@@ -59,4 +70,5 @@ export const CONFIG = {
   alturaEspelho: 10,
   alturaSaia: 4,
   proximoNumero: 1,
+  formas: FORMAS.map(f => ({ ...f })),
 };

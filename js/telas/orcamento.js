@@ -1,9 +1,11 @@
 // Orçamentos: lista, tela do orçamento, escolha do tipo de peça, editor da peça e itens
 import { lista, achar, gravar, excluir, config } from '../db.js';
 import { num, moeda, m2, pct, emCampo, esc, novoId, agora, dataBR, semAcento } from '../util.js';
-import { redesenhar, ir, aviso } from '../nucleo.js';
+import { redesenhar, ir, aviso, perguntar } from '../nucleo.js';
 import { desenho, amostra } from '../desenho.js';
 import { pode } from '../sinc.js';
+import { camposCliente, resumoFalta } from '../cliente.js';
+import { cartaoPagamento, situacaoPagamento } from './financeiro.js';
 import {
   LADOS, TIPOS_BORDA, GRUPOS, RETO, temFaixa, compBorda, areaTampo, areaBordas, areaPeca, valorMaterial,
   acabDaBorda, acabamentoMaior, fixarPercentuais, percAcab, maoObraCalc, maoObraDe, percMaoObra, maoObraAlterada,
@@ -75,7 +77,7 @@ export function linhaOrcamento(o) {
       <div class="info"><div class="nome">${esc(nomeCliente(o))}</div>
         <div class="det">${esc(o.numero)} · ${dataBR(o.criadoEm)} · ${o.pecas.length} ${o.pecas.length === 1 ? 'pedra' : 'pedras'}</div></div>
       ${chipStatus(o.status)}
-      <div class="valor">${moeda(totalGeral(o))}</div>
+      <div class="valor">${moeda(totalGeral(o))}${o.status === 'aprovado' && pode('financeiro') ? `<small class="pag ${situacaoPagamento(o).cls}">${situacaoPagamento(o).texto}</small>` : ''}</div>
     </a>
     <div class="acoes-orc">${atalhosOrcamento(o)}</div>
   </div>`;
@@ -135,7 +137,54 @@ function cartaoSituacao(o) {
   </div>`;
 }
 
+// Pedido (orçamento aprovado): cadastro completo do cliente e pagamento. Continua editável com o orçamento travado.
+function secaoPedido(o) {
+  if (o.status !== 'aprovado') return '';
+  const c = o.clienteId ? achar('clientes', o.clienteId) : null;
+  const clientes = lista('clientes').sort((a, b) => a.nome.localeCompare(b.nome));
+  const cliente = c ? `
+      <div class="ped-t"><b>Cliente</b><span id="falta-${c.id}" class="falta-box">${resumoFalta(c)}</span></div>
+      <p class="nota" style="margin-top:0">Dados para o pedido, a cobrança e a nota fiscal. Ficam salvos no cadastro do cliente.</p>
+      ${camposCliente(c, true)}` : `
+      <div class="ped-t"><b>Cliente</b><span class="chip st-perdido">Sem cliente</span></div>
+      <label for="ped-cliente">Escolha o cliente deste pedido</label>
+      <select id="ped-cliente" data-ped="cliente">
+        <option value="">— escolher —</option>
+        ${clientes.map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}
+      </select>
+      <p class="nota">Cliente novo: cadastre em Clientes e volte aqui.</p>`;
+  return `<h2 id="pedido">Pedido</h2>
+    <div class="card">${cliente}</div>
+    ${cartaoPagamento(o)}
+    ${pode('fiscal') ? `<a class="card linha-orc" href="#/o/${o.id}/nota">
+      <div class="info"><div class="nome">Nota fiscal</div><div class="det">Conferir dados e impostos · NF-e (55) ou NFC-e (65)</div></div>
+      <span class="botao pequeno">Abrir</span></a>` : ''}`;
+}
+
 // ---------- tela do orçamento
+
+// Orçamentos em que o usuário já respondeu "manter os preços" (não pergunta de novo até reabrir)
+const semPergunta = new Set();
+
+// Janela que aparece quando o orçamento foi reaberto (ou já estava enviado) e o cadastro mudou
+async function perguntarPrecos(o) {
+  const novo = JSON.parse(JSON.stringify(o));
+  atualizarOrcamento(novo);
+  const atualizar = await perguntar({
+    titulo: 'Os preços do cadastro mudaram',
+    corpo: `<p>Este orçamento foi feito com os preços antigos.</p>
+      <div class="resumo">
+        <div><span>Valor com os preços do orçamento</span><span>${moeda(totalGeral(o))}</span></div>
+        <div class="forte"><span>Valor com os preços atuais</span><span>${moeda(totalGeral(novo))}</span></div>
+      </div>`,
+    sim: 'Atualizar preços', nao: 'Manter como está',
+  });
+  if (!atualizar) { semPergunta.add(o.id); return; }
+  atualizarOrcamento(o);
+  gravar('orcamentos', o);
+  aviso('Preços atualizados pelo cadastro.');
+  redesenhar();
+}
 
 // Orçamento aprovado fica travado: nada nele pode ser alterado até ser reaberto
 export const travado = o => o.status === 'aprovado';
@@ -165,11 +214,7 @@ export function telaOrcamento(id) {
   // rascunho acompanha o cadastro; depois de enviado, os preços só mudam se o usuário pedir
   const mudou = o.pecas.length > 0 && orcDesatualizado(o);
   if (mudou && o.status === 'rascunho') { atualizarOrcamento(o); gravar('orcamentos', o); }
-  const avisoPrecos = mudou && o.status === 'enviado' ? `
-    <div class="card aviso-precos">
-      <div><b>Os preços do cadastro mudaram</b><span>Este orçamento já foi enviado e continua com os valores do dia em que foi feito.</span></div>
-      <button data-acao="atualizar-precos" data-confirma="Tocar de novo para atualizar">Atualizar preços</button>
-    </div>` : '';
+  const precosAntigos = mudou && o.status === 'enviado';
   const clientes = lista('clientes').sort((a, b) => a.nome.localeCompare(b.nome));
   const fixo = travado(o), dis = fixo ? 'disabled' : '';
   const pecas = o.pecas.map(p => `
@@ -183,9 +228,11 @@ export function telaOrcamento(id) {
     </${fixo ? 'div' : 'a'}>`).join('');
   return {
     nav: 'orcamentos', titulo: `Orçamento ${esc(o.numero)}`, voltar: '#/orcamentos',
+    depois: () => { if (precosAntigos && !semPergunta.has(o.id)) perguntarPrecos(o); },
     corpo: `
       ${cartaoSituacao(o)}
-      ${avisoPrecos}
+      ${secaoPedido(o)}
+      ${o.status === 'aprovado' ? '<h2>Orçamento</h2>' : ''}
       <div class="card">
         <label for="cliente">Cliente</label>
         <select id="cliente" data-campo="clienteId" ${dis}>
@@ -229,6 +276,7 @@ export function telaOrcamento(id) {
       <h2>Este orçamento</h2>
       <div class="linha">
         <button data-acao="duplicar-orc">Duplicar</button>
+        ${precosAntigos ? '<button data-acao="atualizar-precos">Atualizar preços</button>' : ''}
         ${fixo ? '' : '<button class="perigo" data-acao="excluir-orc" data-confirma="Tocar de novo para excluir">Excluir</button>'}
       </div>`,
     rodape: `<div class="total"><small>Total do orçamento</small><b id="total">${moeda(totalGeral(o))}</b></div>
@@ -443,6 +491,13 @@ export function entrada(el) {
     return;
   }
   const o = orcDaTela();
+  if (o && el.dataset.ped === 'cliente' && el.value) {
+    // pedido aprovado sem cliente: escolher o cliente é a única mudança permitida
+    o.clienteId = el.value; o.clienteNome = achar('clientes', el.value).nome;
+    gravar('orcamentos', o);
+    redesenhar();
+    return;
+  }
   if (!o || travado(o)) return;
   if (el.dataset.campo) {
     const c = el.dataset.campo;
@@ -477,20 +532,16 @@ export function entrada(el) {
 export const acoes = {
   'novo-orc': () => ir('#/o/' + criarOrcamento().id),
   'filtro-status': el => { filtro.status = el.dataset.status; redesenhar(); },
-  'atualizar-precos': () => {
-    const o = orcDaTela();
-    atualizarOrcamento(o);
-    gravar('orcamentos', o);
-    aviso('Preços atualizados pelo cadastro.');
-    redesenhar();
-  },
+  'atualizar-precos': () => perguntarPrecos(orcDaTela()),
   'situacao': el => {
     const o = orcDaTela();
     o.status = el.dataset.status;
     o.statusEm = agora();   // data usada na lista e nos números do mês
+    semPergunta.delete(o.id);   // ao reabrir, volta a perguntar sobre os preços
     gravar('orcamentos', o);
-    aviso({ enviado: 'Marcado como enviado.', aprovado: 'Orçamento aprovado.', perdido: 'Marcado como não aprovado.' }[o.status]);
+    aviso({ enviado: 'Marcado como enviado.', aprovado: 'Aprovado! Complete o cliente e o pagamento.', perdido: 'Marcado como não aprovado.' }[o.status]);
     redesenhar();
+    if (o.status === 'aprovado') { const ped = document.getElementById('pedido'); if (ped) ped.scrollIntoView({ behavior: 'smooth' }); }
   },
 
   'cliente-rapido': () => {

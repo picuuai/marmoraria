@@ -1,12 +1,16 @@
 // Início, clientes, cadastros e ajustes
 import { lista, achar, gravar, excluir, config, exportar, importar } from '../db.js';
-import { num, moeda, pct, emCampo, esc, novoId, agora, semAcento } from '../util.js';
+import { num, moeda, pct, emCampo, esc, novoId, agora, semAcento, tipoDocumento } from '../util.js';
 import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema, fundoSalvo, salvarFundo, instalacao, jaInstalado } from '../nucleo.js';
 import { logo, prepararLogo } from '../marca.js';
 import { amostra, atualizarTexturas } from '../desenho.js';
 import { LADOS, TIPOS_BORDA, RETO, ESQUADRIA, totalGeral, resultado } from '../calc.js';
 import { criarOrcamento, linhaOrcamento, atualizarRascunhos } from './orcamento.js';
 import { cartao as cartaoSinc, carregarAparelhos, pode } from '../sinc.js';
+import { camposCliente, resumoFalta, aoAlterarCliente, consultarCep, UFS } from '../cliente.js';
+import { REGIMES, CODIGOS_ICMS, ORIGENS, fiscal } from '../fiscal.js';
+import { numerosFinanceiro, formas } from './financeiro.js';
+import { FORMAS } from '../padroes.js';
 
 let buscaCliente = '';
 let focar = null;   // id do registro recém-criado, para pôr o cursor no nome
@@ -44,6 +48,10 @@ export function telaInicio() {
         ${kpi('Em aberto', moeda(soma(abertos, totalGeral)), `${abertos.length} ${abertos.length === 1 ? 'orçamento' : 'orçamentos'} aguardando`)}
         ${kpi('Aprovado no mês', moeda(soma(aprovadosMes, totalGeral)), `${aprovadosMes.length} ${aprovadosMes.length === 1 ? 'orçamento' : 'orçamentos'}`)}
         ${pode('custos') ? kpi('Lucro bruto no mês', moeda(soma(aprovadosMes, o => resultado(o).lucro)), 'dos orçamentos aprovados') : ''}
+        ${pode('financeiro') ? (() => {
+          const n = numerosFinanceiro(), s = l => l.reduce((t, x) => t + x.p.valor, 0);
+          return kpi('A receber', moeda(s(n.abertas)), n.vencidas.length ? `${moeda(s(n.vencidas))} vencido` : 'nenhuma parcela vencida');
+        })() : ''}
         ${kpi('Taxa de aprovação', decididos.length ? pct(decididos.filter(o => o.status === 'aprovado').length / decididos.length * 100) : '—', `${decididos.length} ${decididos.length === 1 ? 'orçamento decidido' : 'orçamentos decididos'}`)}
       </div>
       ${pode('orcamentos') ? `<h2>Últimos orçamentos</h2>
@@ -97,6 +105,12 @@ export function telaCliente(id) {
         ${campo('obs', 'Observações')}
         ${novo ? '<button class="primario largo" style="margin-top:14px" data-acao="salvar-cliente">Salvar cliente</button>' : ''}
       </div>
+      ${novo ? '<p class="dica">Depois de salvar aparecem os dados completos: CPF ou CNPJ e endereço de cobrança.</p>' : `
+        <h2>Dados completos</h2>
+        <div class="card">
+          <div class="ped-t"><span class="nota" style="margin:0">Usados nos pedidos aprovados e na nota fiscal.</span><span id="falta-${c.id}" class="falta-box">${resumoFalta(c)}</span></div>
+          ${camposCliente(c)}
+        </div>`}
       ${novo ? '' : `
         <h2>Orçamentos deste cliente</h2>
         ${orcs.map(linhaOrcamento).join('') || '<div class="card vazio">Nenhum orçamento para este cliente.</div>'}
@@ -108,9 +122,33 @@ export function telaCliente(id) {
 
 // ---------- cadastros
 
-const ABAS = { materiais: 'Materiais', acabamentos: 'Acabamentos', produtos: 'Produtos', servicos: 'Serviços', tipos: 'Tipos de peça' };
+const ABAS = { materiais: 'Materiais', acabamentos: 'Acabamentos', produtos: 'Produtos', servicos: 'Serviços', tipos: 'Tipos de peça', pagamento: 'Formas de pagamento' };
 const attrs = (loja, id, prop, numero) => `data-cad="${loja}" data-id="${id}" data-prop="${prop}"${numero ? ' data-num' : ''}`;
 const botaoExcluir = (loja, r) => `<button class="perigo" data-acao="cad-excluir" data-loja="${loja}" data-id="${r.id}" data-confirma="Excluir?" aria-label="Excluir ${esc(r.nome)}">✕</button>`;
+
+// Dados da nota fiscal de um material, produto ou serviço (dobrados, para não pesar no cartão)
+function camposFiscais(loja, r, servico) {
+  const regime = REGIMES[fiscal().regime] || REGIMES.simples;
+  const codigos = regime.csosn ? CODIGOS_ICMS.csosn : CODIGOS_ICMS.cst;
+  const sel = (prop, opcoes, atual) => `<select ${attrs(loja, r.id, prop)}>${Object.entries(opcoes).map(([v, n]) => `<option value="${v}" ${String(atual) === String(v) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+  const naNota = r.naNota || (servico ? 'somar' : 'item');
+  const itemProprio = !servico || naNota === 'item';
+  const cfopPadrao = loja === 'materiais' || servico ? '5101' : '5102';
+  return `<details class="fiscal-cad">
+    <summary>Nota fiscal${itemProprio && !r.ncm ? ' <span class="chip st-enviado">sem NCM</span>' : ''}</summary>
+    ${servico ? `<label>Como entra na nota</label>${sel('naNota', { somar: 'Somado ao valor das peças (furo, recorte)', item: 'Item próprio na nota', fora: 'Fora da NF-e (nota de serviço, ex.: instalação)' }, naNota)}` : ''}
+    ${itemProprio ? `<div class="linha" style="margin-top:8px">
+      <div><label>NCM</label><input inputmode="numeric" ${attrs(loja, r.id, 'ncm')} value="${esc(r.ncm || '')}" placeholder="8 dígitos"></div>
+      <div><label>CFOP</label><input inputmode="numeric" ${attrs(loja, r.id, 'cfop')} value="${esc(r.cfop || '')}" placeholder="${cfopPadrao}"></div>
+      <div><label>Origem</label>${sel('origem', ORIGENS, r.origem ?? '0')}</div>
+    </div>
+    <div class="linha">
+      <div style="flex:2 1 220px"><label>${regime.csosn ? 'CSOSN' : 'CST do ICMS'}</label>${sel('icmsCod', { '': 'Padrão da empresa', ...codigos }, r.icmsCod || '')}</div>
+      ${fiscal().ipi ? `<div><label>IPI (%)</label><input inputmode="decimal" ${attrs(loja, r.id, 'ipi', 1)} value="${r.ipi || ''}" placeholder="0"></div>` : ''}
+    </div>
+    <p class="nota">CFOP 5101 = produção própria (peças); 5102 = revenda (cubas, torneiras). Para outro estado o sistema troca para 6xxx sozinho. Confirme os códigos com o contador.</p>` : ''}
+  </details>`;
+}
 
 function cartaoMaterial(m) {
   return `<div class="card cad">
@@ -128,6 +166,7 @@ function cartaoMaterial(m) {
           ${[['granulado', 'Granulado'], ['veios', 'Com veios'], ['liso', 'Liso']].map(([v, n]) => `<option value="${v}" ${m.textura === v ? 'selected' : ''}>${n}</option>`).join('')}
         </select></div>
     </div>
+    ${camposFiscais('materiais', m)}
   </div>`;
 }
 
@@ -157,6 +196,7 @@ function cartaoItem(c) {
       <div><label>Custo (R$)</label><input inputmode="decimal" ${attrs('catalogo', c.id, 'custo', 1)} value="${emCampo(c.custo)}" placeholder="0,00"></div>
       <div><label>Venda (R$)</label><input inputmode="decimal" ${attrs('catalogo', c.id, 'preco', 1)} value="${emCampo(c.preco)}" placeholder="0,00"></div>
     </div>
+    ${camposFiscais('catalogo', c, c.tipo === 'servico')}
   </div>`;
 }
 
@@ -182,6 +222,26 @@ function cartaoTipo(t) {
   </div>`;
 }
 
+function cartaoForma(f) {
+  return `<div class="card cad">
+    <div class="cad-topo">
+      <input aria-label="Nome da forma de pagamento" data-forma="${f.id}" data-prop="nome" value="${esc(f.nome)}" placeholder="Nome">
+      <button class="perigo" data-acao="forma-excluir" data-id="${f.id}" data-confirma="Excluir?" aria-label="Excluir ${esc(f.nome)}">✕</button>
+    </div>
+    <div class="linha">
+      <div><label>Taxa descontada (%)</label><input inputmode="decimal" data-forma="${f.id}" data-prop="taxa" value="${f.taxa ? String(f.taxa).replace('.', ',') : ''}" placeholder="0"></div>
+      <div></div>
+    </div>
+  </div>`;
+}
+
+// As formas ficam nos ajustes da marmoraria; quem ainda não tem a lista recebe a padrão ao editar
+function formasEditaveis() {
+  const c = config();
+  if (!c.formas) c.formas = FORMAS.map(f => ({ ...f }));
+  return c;
+}
+
 export function telaCadastros(aba) {
   if (!ABAS[aba]) return null;
   const novo = (rotulo, loja, tipo = '') => `<button class="largo tracejado" data-acao="cad-novo" data-loja="${loja}" data-tipo="${tipo}">+ ${rotulo}</button>`;
@@ -192,16 +252,18 @@ export function telaCadastros(aba) {
     produtos: () => lista('catalogo').filter(c => c.tipo === 'produto').map(cartaoItem).join('') + novo('Novo produto', 'catalogo', 'produto'),
     servicos: () => lista('catalogo').filter(c => c.tipo === 'servico').map(cartaoItem).join('') + novo('Novo serviço', 'catalogo', 'servico'),
     tipos: () => lista('tipos').sort((a, b) => (a.ordem || 0) - (b.ordem || 0)).map(cartaoTipo).join('') + novo('Novo tipo de peça', 'tipos'),
+    pagamento: () => '<p class="dica esq">Aparecem no pagamento do pedido. A taxa é o que a maquininha ou o banco desconta; o Financeiro mostra o valor líquido.</p>' +
+      formas().map(cartaoForma).join('') + '<button class="largo tracejado" data-acao="forma-nova">+ Nova forma de pagamento</button>',
   }[aba]();
   return {
     nav: 'cadastros', titulo: 'Cadastros',
     corpo: `
       <div class="chips">${Object.keys(ABAS).map(a => `<a class="${a === aba ? 'ativo' : ''}" href="#/cadastros/${a}">${ABAS[a]}</a>`).join('')}</div>
-      <p class="dica esq">Mudanças aqui valem para os próximos orçamentos e para os que estão em rascunho. Os já enviados ou aprovados guardam os preços do dia em que foram feitos.</p>
+      ${aba === 'pagamento' ? '' : '<p class="dica esq">Mudanças aqui valem para os próximos orçamentos e para os que estão em rascunho. Os já enviados ou aprovados guardam os preços do dia em que foram feitos.</p>'}
       ${conteudo}`,
     depois: () => {
       if (!focar) return;
-      const el = document.querySelector(`[data-id="${focar}"][data-prop="nome"]`);
+      const el = document.querySelector(`[data-id="${focar}"][data-prop="nome"], [data-forma="${focar}"][data-prop="nome"]`);
       focar = null;
       if (el) { el.focus(); el.scrollIntoView({ block: 'center' }); }
     },
@@ -222,6 +284,59 @@ function cartaoInstalar() {
   return `<p class="dica esq" style="margin:0">${passo}</p>
     <p class="nota">O botão de instalar aparece aqui sozinho quando o navegador permite. Ele só funciona no endereço da internet (não em <code>localhost</code> aberto por outro aparelho).</p>`;
 }
+
+// Dados da empresa para a nota fiscal. Trocar o regime aplica os códigos e percentuais padrão dele.
+export function cartaoFiscal() {
+  const f = fiscal(), reg = REGIMES[f.regime] || REGIMES.simples;
+  const at = (prop, extra = '') => `id="fi-${prop}" data-fiscal="${prop}" value="${esc(f[prop] ?? '')}" ${extra}`;
+  const campo = (prop, rotulo, extra = '', estilo = '') => `<div ${estilo}><label for="fi-${prop}">${rotulo}</label><input ${at(prop, extra)}></div>`;
+  const doc = tipoDocumento(config().documento);
+  const codigos = reg.csosn ? CODIGOS_ICMS.csosn : CODIGOS_ICMS.cst;
+  return `<div class="card">
+    <label>Regime tributário</label>
+    <div class="regimes">${Object.keys(REGIMES).map(k => `<button class="${f.regime === k ? 'ativo' : ''}" data-acao="fiscal-regime" data-r="${k}">${REGIMES[k].nome}</button>`).join('')}</div>
+    <p class="nota">CNPJ: ${doc === 'cnpj' ? '✓ válido' : 'preencha o CNPJ em Dados da marmoraria'}. Ao trocar o regime, os códigos e percentuais abaixo voltam ao padrão dele.</p>
+    <div class="linha" style="margin-top:10px">
+      ${campo('ie', 'Inscrição estadual')}${campo('im', 'Inscrição municipal')}${campo('cnae', 'CNAE', 'inputmode="numeric"')}
+    </div>
+    <h3 class="sub">Endereço da empresa</h3>
+    <div class="linha">
+      ${campo('cep', 'CEP', 'inputmode="numeric" placeholder="00000-000"')}${campo('logradouro', 'Rua / avenida', '', 'style="flex:3 1 220px"')}
+    </div>
+    <div class="linha">
+      ${campo('numero', 'Número')}${campo('complemento', 'Complemento')}${campo('bairro', 'Bairro', '', 'style="flex:2 1 160px"')}
+    </div>
+    <div class="linha">
+      ${campo('cidade', 'Cidade', '', 'style="flex:3 1 200px"')}
+      <div><label for="fi-uf">Estado</label><select id="fi-uf" data-fiscal="uf"><option value=""></option>${UFS.map(u => `<option ${f.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+    </div>
+    <h3 class="sub">Impostos padrão</h3>
+    <div class="linha">
+      <div style="flex:2 1 240px"><label for="fi-icmsCod">${reg.csosn ? 'CSOSN' : 'CST do ICMS'}</label>
+        <select id="fi-icmsCod" data-fiscal="icmsCod">${Object.entries(codigos).map(([v, n]) => `<option value="${v}" ${String(f.icmsCod) === String(v) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+      ${campo('aliqIcms', 'ICMS interno (%)', 'inputmode="decimal"')}
+      ${reg.csosn ? campo('pCredSN', 'Crédito de ICMS do Simples (%)', 'inputmode="decimal"') : ''}
+    </div>
+    <div class="linha">
+      ${campo('pisCst', 'CST do PIS/COFINS', 'inputmode="numeric"')}${campo('pis', 'PIS (%)', 'inputmode="decimal"')}${campo('cofins', 'COFINS (%)', 'inputmode="decimal"')}
+    </div>
+    <label class="check" style="margin-top:12px"><input type="checkbox" data-fiscal="ipi" ${f.ipi ? 'checked' : ''}> Contribuinte de IPI (indústria): mostra o IPI nos cadastros e na nota</label>
+    ${reg.csosn ? '' : `<label class="check"><input type="checkbox" data-fiscal="tiraIcmsPis" ${f.tiraIcmsPis ? 'checked' : ''}> Tirar o ICMS da base do PIS e da COFINS</label>`}
+    <label for="fi-natureza" style="margin-top:10px">Natureza da operação</label>
+    <input ${at('natureza')}>
+    <h3 class="sub">Numeração</h3>
+    <div class="linha">
+      ${campo('serie55', 'Série NF-e', 'inputmode="numeric"')}${campo('proxima55', 'Próxima NF-e', 'inputmode="numeric"')}
+      ${campo('serie65', 'Série NFC-e', 'inputmode="numeric"')}${campo('proxima65', 'Próxima NFC-e', 'inputmode="numeric"')}
+    </div>
+    <label style="margin-top:10px">Ambiente</label>
+    <div class="seg">${[['homologacao', 'Homologação (teste)'], ['producao', 'Produção (vale de verdade)']].map(([v, n]) => `<button class="${f.ambiente === v ? 'ativo' : ''}" data-acao="fiscal-ambiente" data-v="${v}">${n}</button>`).join('')}</div>
+    <p class="nota">Os percentuais e códigos são o padrão de cada regime. Confirme com o contador: alíquotas de ICMS mudam por estado e por produto.</p>
+  </div>`;
+}
+
+const fiscalGravado = () => { const c = config(); if (!c.fiscal) c.fiscal = { ...fiscal() }; return c; };
+const NUMEROS_FISCAIS = ['aliqIcms', 'pCredSN', 'pis', 'cofins', 'serie55', 'proxima55', 'serie65', 'proxima65'];
 
 const CORES = [['esmeralda', 'Esmeralda'], ['oceano', 'Oceano'], ['grafite', 'Grafite'], ['vinho', 'Vinho'], ['ametista', 'Ametista'], ['cobre', 'Cobre']];
 
@@ -313,6 +428,24 @@ export function entrada(el) {
     if (el.dataset.cad === 'materiais' && (el.dataset.prop === 'cor' || el.dataset.prop === 'textura')) atualizarTexturas();
     // preço ou percentual alterado: os orçamentos em rascunho passam a usar o valor novo
     if (el.dataset.cad === 'materiais' || el.dataset.cad === 'acabamentos') atualizarRascunhos();
+    if (el.dataset.cad === 'clientes') aoAlterarCliente(reg, el.dataset.prop);
+  } else if (el.dataset.fiscal && el.type !== 'checkbox') {
+    const c = fiscalGravado(), k = el.dataset.fiscal;
+    c.fiscal[k] = NUMEROS_FISCAIS.includes(k) ? num(el.value) : el.value;
+    if (k === 'cidade' || k === 'uf') c.fiscal.ibge = '';
+    gravar('config', c);
+    if (k === 'cep') consultarCep(el.value).then(e => {
+      if (!e) return;
+      Object.assign(c.fiscal, e);
+      gravar('config', c);
+      for (const p of ['cep', 'logradouro', 'bairro', 'cidade', 'uf']) { const x = document.getElementById('fi-' + p); if (x && x !== document.activeElement) x.value = c.fiscal[p]; }
+      const n = document.getElementById('fi-numero'); if (n && !c.fiscal.numero) n.focus();
+    });
+  } else if (el.dataset.forma) {
+    const c = formasEditaveis(), f = c.formas.find(x => x.id === el.dataset.forma);
+    if (!f) return;
+    f[el.dataset.prop] = el.dataset.prop === 'taxa' ? num(el.value) : el.value;
+    gravar('config', c);
   } else if (el.dataset.cfg) {
     const c = config();
     c[el.dataset.cfg] = 'num' in el.dataset ? num(el.value) : el.value;
@@ -322,6 +455,15 @@ export function entrada(el) {
 }
 
 export function mudanca(el) {
+  if (el.dataset.fiscal && el.type === 'checkbox') {
+    const c = fiscalGravado();
+    c.fiscal[el.dataset.fiscal] = el.checked;
+    gravar('config', c);
+    if (el.dataset.fiscal === 'ipi') redesenhar();
+    return;
+  }
+  // serviço trocado entre "somar", "item" e "fora": mostra ou esconde NCM e CFOP
+  if (el.dataset.cad === 'catalogo' && el.dataset.prop === 'naNota') { redesenhar(); return; }
   if ('logo' in el.dataset && el.files[0]) {
     prepararLogo(el.files[0]).then(dados => {
       const c = config();
@@ -365,6 +507,33 @@ export const acoes = {
     const reg = gravar(el.dataset.loja, { id: novoId(), ...NOVOS[el.dataset.loja](el.dataset.tipo) });
     focar = reg.id;
     if (el.dataset.loja === 'materiais') atualizarTexturas();
+    redesenhar();
+  },
+  'forma-nova': () => {
+    const c = formasEditaveis(), f = { id: novoId(), nome: '', taxa: 0 };
+    c.formas.push(f);
+    gravar('config', c);
+    focar = f.id;
+    redesenhar();
+  },
+  'forma-excluir': el => {
+    const c = formasEditaveis();
+    c.formas = c.formas.filter(f => f.id !== el.dataset.id);
+    gravar('config', c);
+    redesenhar();
+  },
+  'fiscal-regime': el => {
+    const c = fiscalGravado();
+    c.fiscal.regime = el.dataset.r;
+    Object.assign(c.fiscal, REGIMES[el.dataset.r].padrao);
+    gravar('config', c);
+    aviso(`Regime: ${REGIMES[el.dataset.r].nome}. Códigos e percentuais ajustados.`);
+    redesenhar();
+  },
+  'fiscal-ambiente': el => {
+    const c = fiscalGravado();
+    c.fiscal.ambiente = el.dataset.v;
+    gravar('config', c);
     redesenhar();
   },
   'cad-excluir': el => {

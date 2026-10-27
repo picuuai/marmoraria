@@ -21,6 +21,8 @@ export const MODULOS = {
   clientes: 'Clientes',
   cadastros: 'Cadastros e preços',
   custos: 'Custos e lucro',
+  financeiro: 'Financeiro (recebimentos)',
+  fiscal: 'Nota fiscal',
   ajustes: 'Ajustes da marmoraria',
 };
 const TODOS = Object.fromEntries(Object.keys(MODULOS).map(m => [m, true]));

@@ -6,31 +6,41 @@ import { atualizarTexturas } from './desenho.js';
 import * as orc from './telas/orcamento.js';
 import * as folhas from './telas/folhas.js';
 import * as gestao from './telas/gestao.js';
+import * as fin from './telas/financeiro.js';
+import * as nota from './telas/nota.js';
 import * as sinc from './sinc.js';
 import { logo } from './marca.js';
 import { prepararLogoPdf } from './folha-pdf.js';
 
-const modulos = [orc, folhas, gestao, sinc];
+const modulos = [orc, folhas, gestao, fin, nota, sinc];
 const app = document.getElementById('app');
 
 const icone = d => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const NAV = [
-  { id: 'inicio', hash: '#/', nome: 'Início', icone: icone('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>') },
-  { id: 'orcamentos', hash: '#/orcamentos', nome: 'Orçamentos', icone: icone('<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h6"/>') },
-  { id: 'clientes', hash: '#/clientes', nome: 'Clientes', icone: icone('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.200-5.500 6.500-5.500s5.900 1.900 6.500 5.500"/><path d="M16 4.800a3.500 3.500 0 010 6.400M18.500 14.800c1.700.8 2.700 2.500 3 5.200"/>') },
-  { id: 'cadastros', hash: '#/cadastros/materiais', nome: 'Cadastros', icone: icone('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.500l9 5 9-5"/><path d="M3 17l9 5 9-5"/>') },
-  { id: 'ajustes', hash: '#/ajustes', nome: 'Ajustes', icone: icone('<circle cx="12" cy="12" r="3"/><path d="M12 2.500v3M12 18.500v3M2.500 12h3M18.500 12h3M5.300 5.300l2.100 2.100M16.600 16.600l2.100 2.100M5.300 18.700l2.100-2.100M16.600 7.400l2.100-2.100"/>') },
+  { id: 'inicio', grupo: '', hash: '#/', nome: 'Início', icone: icone('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>') },
+  { id: 'orcamentos', grupo: 'Vendas', hash: '#/orcamentos', nome: 'Orçamentos', icone: icone('<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h6"/>') },
+  { id: 'clientes', grupo: 'Vendas', hash: '#/clientes', nome: 'Clientes', icone: icone('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.200-5.500 6.500-5.500s5.900 1.900 6.500 5.500"/><path d="M16 4.800a3.500 3.500 0 010 6.400M18.500 14.800c1.700.8 2.700 2.500 3 5.200"/>') },
+  { id: 'financeiro', grupo: 'Gestão', hash: '#/financeiro', nome: 'Financeiro', icone: icone('<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/><path d="M6.500 14.500h4"/>') },
+  { id: 'fiscal', grupo: 'Gestão', hash: '#/fiscal', nome: 'Fiscal', icone: icone('<path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 7.500h6M9 11h6M9 14.500h4"/>') },
+  { id: 'cadastros', grupo: 'Sistema', hash: '#/cadastros/materiais', nome: 'Cadastros', icone: icone('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.500l9 5 9-5"/><path d="M3 17l9 5 9-5"/>') },
+  { id: 'ajustes', grupo: 'Sistema', hash: '#/ajustes', nome: 'Ajustes', icone: icone('<circle cx="12" cy="12" r="3"/><path d="M12 2.500v3M12 18.500v3M2.500 12h3M18.500 12h3M5.300 5.300l2.100 2.100M16.600 16.600l2.100 2.100M5.300 18.700l2.100-2.100M16.600 7.400l2.100-2.100"/>') },
 ];
 
 // Módulo que cada tela exige (null = liberada para todo aparelho conectado)
 function moduloDaRota(p) {
   if (p[0] === 'orcamentos') return 'orcamentos';
-  if (p[0] === 'o') return p[2] === 'interna' ? 'custos' : 'orcamentos';
+  if (p[0] === 'o') return p[2] === 'interna' ? 'custos' : p[2] === 'nota' ? 'fiscal' : 'orcamentos';
   if (p[0] === 'clientes' || p[0] === 'cliente') return 'clientes';
   if (p[0] === 'cadastros') return 'cadastros';
+  if (p[0] === 'financeiro') return 'financeiro';
+  if (p[0] === 'fiscal') return 'fiscal';
   return null;
 }
-const MODULO_DO_MENU = { orcamentos: 'orcamentos', clientes: 'clientes', cadastros: 'cadastros' };
+const MODULO_DO_MENU = { orcamentos: 'orcamentos', clientes: 'clientes', financeiro: 'financeiro', fiscal: 'fiscal', cadastros: 'cadastros' };
+// No celular a barra de baixo mostra os principais; o resto fica em "Mais"
+const NA_BARRA = ['inicio', 'orcamentos', 'financeiro', 'fiscal', 'clientes'];
+const iconeMais = icone('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>');
+let maisAberto = false;
 
 function rota() {
   const p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
@@ -53,11 +63,14 @@ function rota() {
         case 'cliente': return folhas.telaCliente(p[1]);
         case 'corte': return folhas.telaCorte(p[1]);
         case 'interna': return folhas.telaInterna(p[1]);
+        case 'nota': return nota.telaNota(p[1]);
       }
       return null;
     case 'clientes': return gestao.telaClientes();
     case 'cliente': return gestao.telaCliente(p[1]);
     case 'cadastros': return gestao.telaCadastros(p[1] || 'materiais');
+    case 'financeiro': return fin.telaFinanceiro();
+    case 'fiscal': return nota.telaFiscal(p[1] || 'notas');
     case 'ajustes': return gestao.telaAjustes();
   }
   return null;
@@ -75,12 +88,20 @@ function desenhar(manter) {
   }
   const t = rota();
   if (!t) { location.hash = '#/'; return; }
-  const links = NAV.filter(n => !MODULO_DO_MENU[n.id] || sinc.pode(MODULO_DO_MENU[n.id])).map(n => `<a href="${n.hash}" class="${n.id === t.nav ? 'ativo' : ''}" ${n.id === t.nav ? 'aria-current="page"' : ''}>${n.icone}<span>${n.nome}</span></a>`).join('');
+  const liberados = NAV.filter(n => !MODULO_DO_MENU[n.id] || sinc.pode(MODULO_DO_MENU[n.id]));
+  const link = n => `<a href="${n.hash}" class="${n.id === t.nav ? 'ativo' : ''}" ${n.id === t.nav ? 'aria-current="page"' : ''}>${n.icone}<span>${n.nome}</span></a>`;
+  // menu lateral separado por grupo de módulos
+  const lateral = liberados.map((n, i) => (n.grupo && n.grupo !== (liberados[i - 1] || {}).grupo ? `<small class="grupo-menu">${n.grupo}</small>` : '') + link(n)).join('');
+  // barra do celular: até 4 principais + "Mais" com o restante
+  const naBarra = liberados.length <= 5 ? liberados : liberados.filter(n => NA_BARRA.includes(n.id)).slice(0, 4);
+  const noMais = liberados.filter(n => !naBarra.includes(n));
+  const maisAtivo = noMais.some(n => n.id === t.nav);
+  const barra = naBarra.map(link).join('') + (noMais.length ? `<button class="${maisAtivo ? 'ativo' : ''}" data-acao="menu-mais" aria-expanded="${maisAberto}">${iconeMais}<span>Mais</span></button>` : '');
   const rolagem = window.scrollY;
   app.innerHTML = `
     <nav class="lateral nao-imprime" aria-label="Menu">
       <div class="marca">${logo()}<b>${esc(config().empresa)}</b></div>
-      ${links}
+      ${lateral}
     </nav>
     <div class="conteudo">
       <header class="barra nao-imprime">
@@ -92,13 +113,17 @@ function desenhar(manter) {
       <main class="${t.classe || ''}">${t.corpo}</main>
       ${t.rodape ? `<div class="rodape nao-imprime"><div class="dentro">${t.rodape}</div></div>` : ''}
     </div>
-    <nav class="abas nao-imprime" aria-label="Menu">${links}</nav>`;
+    <nav class="abas nao-imprime" aria-label="Menu">${barra}</nav>
+    ${maisAberto && noMais.length ? `<div class="mais-fundo nao-imprime" data-acao="menu-mais"></div>
+      <div class="mais-menu nao-imprime">${noMais.map(link).join('')}</div>` : ''}`;
   document.body.classList.toggle('com-rodape', !!t.rodape);
   window.scrollTo(0, manter ? rolagem : 0);
   if (t.depois) t.depois();
 }
 
 app.addEventListener('click', e => {
+  const mais = e.target.closest('[data-acao="menu-mais"]');
+  if (mais) { maisAberto = !maisAberto; desenhar(true); return; }
   for (const m of modulos) if (m.aoClicar) m.aoClicar(e);
   const el = e.target.closest('[data-acao]');
   if (!el) return;
@@ -116,7 +141,7 @@ app.addEventListener('click', e => {
 app.addEventListener('input', e => { for (const m of modulos) if (m.entrada) m.entrada(e.target, e); });
 app.addEventListener('change', e => { for (const m of modulos) if (m.mudanca) m.mudanca(e.target, e); });
 app.addEventListener('keydown', e => { for (const m of modulos) if (m.tecla) m.tecla(e); });
-window.addEventListener('hashchange', () => { if (!sinc.conectarPeloLink()) desenhar(false); });
+window.addEventListener('hashchange', () => { maisAberto = false; if (!sinc.conectarPeloLink()) desenhar(false); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema());
 
 const guardou = await abrir();

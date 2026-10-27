@@ -95,7 +95,8 @@ input, select, textarea {
 }
 textarea { resize: vertical; }
 input[type="color"] { padding: 4px; height: 46px; cursor: pointer; }
-input:disabled { background: var(--card-2); color: var(--muted); }
+input:disabled, select:disabled, textarea:disabled { background: var(--card-2); color: var(--muted); opacity: 1; }
+div.card.peca { display: flex; }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent-2);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 22%, transparent);
@@ -204,12 +205,12 @@ body.com-rodape main { padding-bottom: 120px; }
   .conteudo { margin-left: 0; }
   .lateral { display: none; }
   .abas {
-    display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
     background: color-mix(in srgb, var(--card) 92%, transparent);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
   }
-  .abas a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px 7px; font-size: 11px; color: var(--muted); text-decoration: none; }
+  .abas a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 7px; font-size: 10.5px; letter-spacing: -.01em; color: var(--muted); text-decoration: none; min-width: 0; }
   .abas a { position: relative; }
   .abas a.ativo { color: var(--accent-2); font-weight: 600; }
   .abas a.ativo::before { content: ""; position: absolute; top: 0; left: 28%; right: 28%; height: 3px; border-radius: 0 0 4px 4px; background: var(--accent-2); }
@@ -303,11 +304,92 @@ button.pequeno { padding: 5px 12px; font-size: 13px; }
 .chips small { font-weight: 700; opacity: .7; margin-left: 2px; }
 .conta-lista { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
 .conta-lista b { color: var(--ink); }
+.aviso-precos { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--warn-soft); border-color: transparent; }
+.aviso-precos > div { flex: 1 1 220px; display: flex; flex-direction: column; }
+.aviso-precos span { font-size: 13px; color: var(--muted); }
 .situacao { border-left: 4px solid var(--line); }
 .situacao.st-enviado { border-left-color: var(--warn); }
 .situacao.st-aprovado { border-left-color: var(--ok); }
 .situacao.st-perdido { border-left-color: var(--danger); }
 .situacao-t { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
+
+/* ---------- janela de pergunta ---------- */
+dialog.janela {
+  width: min(440px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--line); border-radius: 20px;
+  background: var(--card); color: var(--ink); box-shadow: 0 24px 70px rgba(0, 0, 0, .35); animation: entra .16s ease-out;
+}
+dialog.janela::backdrop { background: rgba(10, 14, 18, .5); backdrop-filter: blur(3px); }
+dialog.janela h2 { all: unset; display: block; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+dialog.janela p { margin: 0 0 12px; color: var(--muted); }
+dialog.janela .janela-corpo { margin-bottom: 16px; }
+
+/* ---------- pedido e financeiro ---------- */
+.ped-t { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ped-t > b { font-size: 16px; margin-right: auto; }
+.ped-t > .nota { margin-right: auto; }
+.linha > div:has(> input[type="date"]) { flex-basis: 150px; }
+.falta-box { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.falta { font-size: 13px; color: var(--muted); }
+.nota.erro { color: var(--danger); }
+.chip.st-rascunho { background: var(--card-2); color: var(--muted); }
+h3.sub { font-size: 14px; color: var(--muted); font-weight: 600; margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+.parcela { display: grid; grid-template-columns: 74px 1.1fr 1fr 1.2fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.parcela:first-child { border-top: 0; }
+.parcela input, .parcela select { padding: 8px 9px; min-width: 0; }
+.parcela .rot { font-size: 14px; }
+.parcela.atrasada .rot { color: var(--danger); }
+.parcela.paga .rot { color: var(--ok); }
+.parcela .recebido { font-size: 13px; color: var(--ok); white-space: nowrap; }
+.parcela .recebido .link { font-size: 13px; padding: 0 2px; }
+@media (max-width: 620px) {
+  .parcela { grid-template-columns: 1fr 1fr; }
+  .parcela .rot { grid-column: 1 / -1; }
+  .parcela select { grid-column: 1; }
+  .parcela input, .parcela select { font-size: 14px; padding: 8px 7px; }
+}
+.card.parc { display: flex; align-items: center; gap: 12px; border-left: 4px solid var(--warn); }
+.card.parc.atrasada { border-left-color: var(--danger); }
+.card.parc.paga { border-left-color: var(--ok); }
+.card.parc .info { flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.card.parc .quando { font-size: 13px; font-weight: 600; margin-top: 2px; color: var(--warn); }
+.card.parc.atrasada .quando { color: var(--danger); }
+.card.parc.paga .quando { color: var(--ok); }
+.kpi.alerta-kpi b { color: var(--danger); }
+.valor small.pag { display: block; font-size: 11px; font-weight: 600; text-align: right; margin-top: 2px; }
+.pag.st-aprovado { color: var(--ok); } .pag.st-enviado { color: var(--warn); } .pag.st-perdido { color: var(--danger); } .pag.st-rascunho { color: var(--muted); }
+
+/* ---------- menu por módulos ---------- */
+.lateral .grupo-menu { display: block; padding: 16px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 255, 255, .55); }
+.abas button { all: unset; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 7px; font-size: 10.5px; color: var(--muted); cursor: pointer; position: relative; }
+.abas button.ativo { color: var(--accent-2); font-weight: 600; }
+.mais-fundo { position: fixed; inset: 0; z-index: 25; background: rgba(10, 14, 18, .35); }
+.mais-menu {
+  position: fixed; right: 10px; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 26; min-width: 210px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, .25); padding: 6px; animation: entra .15s ease-out;
+}
+.mais-menu a { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 10px; color: var(--ink); text-decoration: none; font-weight: 500; }
+.mais-menu a.ativo { background: var(--accent-soft); color: var(--accent-2); }
+.txt-erro { color: var(--danger); }
+.txt-ok { color: var(--ok); }
+
+/* ---------- nota fiscal ---------- */
+.regimes { display: flex; flex-wrap: wrap; gap: 6px; }
+.regimes button { border-radius: 999px; padding: 8px 14px; font-size: 14px; }
+.regimes button.ativo { background: var(--accent-2); border-color: var(--accent-2); color: var(--accent-ink); font-weight: 600; }
+label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; margin-top: 6px; }
+label.check input { width: auto; }
+.fiscal-cad { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.fiscal-cad summary { cursor: pointer; color: var(--accent-2); font-size: 14px; font-weight: 500; }
+.fiscal-cad[open] summary { margin-bottom: 8px; }
+.nota-bloco { display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
+.nota-bloco span { color: var(--muted); }
+.tabela-nota { padding: 0; overflow-x: auto; }
+.tabela-nota table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+.tabela-nota th, .tabela-nota td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tabela-nota th { color: var(--muted); font-weight: 600; background: var(--card-2); white-space: nowrap; }
+.tabela-nota .n { text-align: right; white-space: nowrap; }
+.tabela-nota small { display: block; color: var(--muted); }
+.tabela-nota .falta-c { color: var(--danger); font-weight: 600; }
 
 /* ---------- sincronização ---------- */
 .selo-sinc { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
