@@ -35,6 +35,7 @@ const MENU = [
       { id: 'notas', nome: 'Emissor de notas', hash: '#/fiscal', modulo: 'fiscal' },
       { id: 'compras', nome: 'Compras', hash: '#/compras', modulo: 'fiscal' },
       { id: 'estoque', nome: 'Estoque', hash: '#/estoque', modulo: 'fiscal' },
+      { id: 'emissao', nome: 'Configurações', hash: '#/fiscal/config', modulo: 'fiscal' },
     ],
   },
   {
@@ -117,7 +118,7 @@ function rota() {
     case 'cadastros': return gestao.telaCadastros(p[1] || 'materiais');
     case 'financeiro': return fin.telaFinanceiro();
     case 'fiscal':
-      if (p[1] === 'config') { location.replace('#/cadastros/impostos'); return null; }
+      if (p[1] === 'config') return nota.telaConfigEmissao();
       return nota.telaFiscal();
     case 'ajustes': return gestao.telaAjustes();
   }

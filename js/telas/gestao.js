@@ -311,23 +311,44 @@ export function cartaoImpostos() {
     ${reg.csosn ? '' : `<label class="check"><input type="checkbox" data-fiscal="tiraIcmsPis" ${f.tiraIcmsPis ? 'checked' : ''}> Tirar o ICMS da base do PIS e da COFINS</label>`}
     <label for="fi-natureza" style="margin-top:10px">Natureza da operação</label>
     <input ${at('natureza')}>
-    <h3 class="sub">Numeração</h3>
-    <div class="linha">
-      ${campo('serie55', 'Série NF-e', 'inputmode="numeric"')}${campo('proxima55', 'Próxima NF-e', 'inputmode="numeric"')}
-      ${campo('serie65', 'Série NFC-e', 'inputmode="numeric"')}${campo('proxima65', 'Próxima NFC-e', 'inputmode="numeric"')}
-    </div>
-    <label style="margin-top:10px">Ambiente</label>
-    <div class="seg">${[['homologacao', 'Homologação (teste)'], ['producao', 'Produção (vale de verdade)']].map(([v, n]) => `<button class="${f.ambiente === v ? 'ativo' : ''}" data-acao="fiscal-ambiente" data-v="${v}">${n}</button>`).join('')}</div>
     <p class="nota">Os percentuais e códigos são o padrão de cada regime. Confirme com o contador: alíquotas de ICMS mudam por estado e por produto.</p>
-    <h3 class="sub">Servidor de emissão</h3>
-    <p class="nota" style="margin-top:0">O servidor PHP (pasta <code>nfe</code>) que guarda o certificado digital e fala com a SEFAZ.</p>
-    <div class="linha">
-      ${campo('servidor', 'Endereço do servidor', 'placeholder="https://notas.suaempresa.com.br" inputmode="url"', 'style="flex:2 1 240px"')}
-      ${campo('servidorChave', 'Chave de acesso do servidor', 'type="password" autocomplete="off"')}
+  </div>
+  <a class="card linha-orc" href="#/fiscal/config" style="margin-top:12px"><div class="info"><div class="nome">Configurações da emissão</div>
+    <div class="det">Servidor de emissão, ambiente (teste ou produção) e numeração das notas ficam em Fiscal → Configurações</div></div><span class="botao pequeno">Abrir</span></a>`;
+}
+
+// Configurações da emissão: servidor (PHP com o certificado), ambiente e numeração
+export function cartaoEmissao() {
+  const f = fiscal();
+  const campo = (prop, rotulo, extra = '', estilo = '') => `<div ${estilo}><label for="fi-${prop}">${rotulo}</label>
+    <input id="fi-${prop}" data-fiscal="${prop}" value="${esc(f[prop] ?? '')}" ${extra}></div>`;
+  return `
+    <h2>Servidor de emissão</h2>
+    <div class="card">
+      <p class="nota" style="margin-top:0">O servidor PHP (pacote <code>nfe-servidor.zip</code>, instalado na hospedagem) guarda o certificado digital
+        e fala com a SEFAZ. Cole aqui o endereço dele e a chave de acesso (a mesma <code>chave_api</code> do <code>config.php</code>).</p>
+      <div class="linha">
+        ${campo('servidor', 'Endereço do servidor', 'placeholder="https://notas.suaempresa.com.br" inputmode="url" autocomplete="off"', 'style="flex:2 1 240px"')}
+        ${campo('servidorChave', 'Chave de acesso do servidor', 'type="password" autocomplete="off"')}
+      </div>
+      <button style="margin-top:12px" data-acao="fiscal-testar">Testar o servidor</button>
+      <div id="fiscal-teste"></div>
     </div>
-    <button style="margin-top:10px" data-acao="fiscal-testar">Testar o servidor</button>
-    <div id="fiscal-teste"></div>
-  </div>`;
+    <h2>Ambiente</h2>
+    <div class="card">
+      <div class="seg">${[['homologacao', 'Homologação (teste)'], ['producao', 'Produção (vale de verdade)']].map(([v, n]) => `<button class="${f.ambiente === v ? 'ativo' : ''}" data-acao="fiscal-ambiente" data-v="${v}">${n}</button>`).join('')}</div>
+      <p class="nota">Comece em homologação: as notas são aceitas pela SEFAZ, mas não têm valor fiscal. Passe para produção depois de conferir com o contador.</p>
+    </div>
+    <h2>Numeração</h2>
+    <div class="card">
+      <div class="linha">
+        ${campo('serie55', 'Série NF-e', 'inputmode="numeric"')}${campo('proxima55', 'Próxima NF-e', 'inputmode="numeric"')}
+        ${campo('serie65', 'Série NFC-e', 'inputmode="numeric"')}${campo('proxima65', 'Próxima NFC-e', 'inputmode="numeric"')}
+      </div>
+      <p class="nota">Se a empresa já emitia notas em outro sistema, continue a partir do número seguinte ao último emitido (na mesma série).</p>
+    </div>
+    <a class="card linha-orc" href="#/cadastros/impostos" style="margin-top:12px"><div class="info"><div class="nome">Impostos</div>
+      <div class="det">Regime tributário, CST/CSOSN, alíquotas e natureza da operação</div></div><span class="botao pequeno">Abrir</span></a>`;
 }
 
 // ---------- empresa (dados da marmoraria, usados no orçamento e na nota fiscal)

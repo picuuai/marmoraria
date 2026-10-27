@@ -275,7 +275,7 @@ export function dadosEmissao(o, modelo) {
 // Chamada ao servidor. Devolve o JSON (ou o PDF, com pdf = true); erro vira exceção com a mensagem
 export async function chamarServidor(acao, dados, pdf = false) {
   const f = fiscal();
-  if (!servidorPronto()) throw new Error('Configure o servidor de emissão em Cadastros → Impostos.');
+  if (!servidorPronto()) throw new Error('Configure o servidor de emissão em Fiscal → Configurações.');
   let r;
   try {
     r = await fetch(`${f.servidor.replace(/\/+$/, '')}/index.php?acao=${acao}`, {

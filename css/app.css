@@ -438,6 +438,8 @@ a.heroi:hover { transform: translateY(-1px); }
 }
 
 /* ---------- nota fiscal ---------- */
+a.aviso-link { display: block; margin-bottom: 14px; color: inherit; text-decoration: none; }
+a.aviso-link:hover { filter: brightness(.98); }
 .regimes { display: flex; flex-wrap: wrap; gap: 6px; }
 .regimes button { border-radius: 999px; padding: 8px 14px; font-size: 14px; }
 .regimes button.ativo { background: var(--accent-2); border-color: var(--accent-2); color: var(--accent-ink); font-weight: 600; }

@@ -6,6 +6,7 @@ import { redesenhar } from '../nucleo.js';
 import { montarNota, avisosNota, CODIGOS_ICMS, servidorPronto, dadosEmissao, chamarServidor, emitenteNota } from '../fiscal.js';
 import { aviso, perguntar } from '../nucleo.js';
 import { config } from '../db.js';
+import { cartaoEmissao } from './gestao.js';
 import { baixar, imprimirPdf } from '../folha-pdf.js';
 import { nomeCliente } from './orcamento.js';
 import { lista } from '../db.js';
@@ -105,7 +106,7 @@ export function telaNota(id) {
 
       ${emitida ? '' : `<div class="card" style="margin-top:18px">
         <button class="primario largo" data-acao="nota-emitir" ${n.problemas.length || !servidorPronto() ? 'disabled' : ''}>Emitir ${modelo === '65' ? 'NFC-e' : 'NF-e'} nº ${n.numero}</button>
-        <p class="nota" style="text-align:center">${!servidorPronto() ? 'Configure o servidor de emissão em <a href="#/cadastros/impostos">Cadastros → Impostos</a>.'
+        <p class="nota" style="text-align:center">${!servidorPronto() ? 'Configure o servidor de emissão em <a href="#/fiscal/config">Fiscal → Configurações</a>.'
           : n.problemas.length ? 'Complete os dados acima para liberar a emissão.' : `Será enviada à SEFAZ em ${n.f.ambiente === 'producao' ? '<b>produção</b> (vale de verdade)' : 'homologação (teste)'}.`}</p>
       </div>`}`,
   };
@@ -113,8 +114,12 @@ export function telaNota(id) {
 
 // ---------- módulo Fiscal: notas dos pedidos e configuração
 
+export const telaConfigEmissao = () => ({ nav: 'emissao', titulo: 'Configurações da emissão', corpo: cartaoEmissao() });
+
 export function telaFiscal() {
-  const chips = '';
+  // sem servidor configurado, o aviso leva direto às configurações
+  const chips = servidorPronto() ? '' : `<a class="alerta s-pendente aviso-link" href="#/fiscal/config"><b>Falta configurar o servidor de emissão.</b>
+    Toque aqui para informar o endereço e a chave de acesso.</a>`;
   const pedidos = lista('orcamentos').filter(o => o.status === 'aprovado')
     .sort((a, b) => (b.statusEm || '').localeCompare(a.statusEm || ''))
     .map(o => ({ o, n: montarNota(o, (o.nota && o.nota.modelo) || '55') }));
@@ -137,7 +142,7 @@ export function telaFiscal() {
               : n.problemas.length ? `Falta: ${esc(n.problemas[0].texto)}${n.problemas.length > 1 ? ` e mais ${n.problemas.length - 1}` : ''}` : 'Pronta para emitir'}</div></div>
           <div class="valor">${moeda(n.t.vNF)}</div></a>`).join('')
         : '<div class="card vazio">Nenhum pedido aprovado ainda.</div>'}
-      ${f ? `<p class="nota">Regime: ${esc(n0(pedidos).regime.nome)} · ${f.ambiente === 'producao' ? 'produção' : 'homologação (teste)'}. Altere em <a href="#/cadastros/impostos">Cadastros → Impostos</a>.</p>` : ''}`,
+      ${f ? `<p class="nota">Regime: ${esc(n0(pedidos).regime.nome)} · ${f.ambiente === 'producao' ? 'produção' : 'homologação (teste)'}. Altere em <a href="#/cadastros/impostos">Cadastros → Impostos</a> e <a href="#/fiscal/config">Fiscal → Configurações</a>.</p>` : ''}`,
   };
 }
 const n0 = l => l[0].n;
