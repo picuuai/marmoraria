@@ -391,6 +391,11 @@ label.check input { width: auto; }
 .tabela-nota small { display: block; color: var(--muted); }
 .tabela-nota .falta-c { color: var(--danger); font-weight: 600; }
 
+.nota-emitida { border-left: 4px solid var(--ok); }
+.nota-emitida.cancelada { border-left-color: var(--danger); }
+.nota-emitida code { font-size: 12px; word-break: break-all; }
+dialog.janela textarea { width: 100%; }
+
 /* ---------- sincronização ---------- */
 .selo-sinc { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .selo-sinc i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }

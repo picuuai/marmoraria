@@ -128,7 +128,9 @@ function cartaoSituacao(o) {
   const botoes = {
     rascunho: botao('enviado', 'Marcar como enviado') + botao('aprovado', 'Aprovar', 'primario') + botao('perdido', 'Não aprovado', 'perigo'),
     enviado: botao('aprovado', 'Aprovar', 'primario') + botao('perdido', 'Não aprovado', 'perigo'),
-    aprovado: '<button data-acao="situacao" data-status="enviado" data-confirma="Tocar de novo para reabrir">Reabrir para alterar</button>',
+    aprovado: o.nfe && o.nfe.status === 'autorizada'
+      ? '<span class="nota">Tem nota fiscal autorizada: para alterar, cancele a nota em Fiscal.</span>'
+      : '<button data-acao="situacao" data-status="enviado" data-confirma="Tocar de novo para reabrir">Reabrir para alterar</button>',
     perdido: botao('aprovado', 'Aprovar', 'primario') + botao('enviado', 'Reabrir'),
   };
   return `<div class="card situacao st-${o.status}">

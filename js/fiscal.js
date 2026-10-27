@@ -1,7 +1,7 @@
 // Nota fiscal (NF-e modelo 55 e NFC-e modelo 65): regimes tributários, itens e impostos.
 // Os percentuais e códigos são padrões editáveis nos Ajustes e nos Cadastros: quem confirma é o contador.
 import { lista, achar, config } from './db.js';
-import { arred, soDigitos, tipoDocumento } from './util.js';
+import { arred, soDigitos, tipoDocumento, hoje, semAcento } from './util.js';
 import { valorPeca, qtdDe } from './calc.js';
 import { faltaCliente } from './cliente.js';
 
@@ -130,7 +130,8 @@ export function montarNota(o, modelo = '55') {
     const liquido = x.valor - x.desconto;
     // IPI (só para quem é contribuinte, normalmente indústria)
     x.ipiCst = f.ipi ? (x.ipi > 0 ? '50' : '51') : '';
-    x.vIPI = f.ipi && x.ipi > 0 ? arred((liquido + x.frete) * x.ipi / 100) : 0;
+    x.baseIPI = arred(liquido + x.frete);
+    x.vIPI = f.ipi && x.ipi > 0 ? arred(x.baseIPI * x.ipi / 100) : 0;
     // ICMS
     x.aliqIcms = 0; x.vBC = 0; x.vICMS = 0; x.vCredSN = 0;
     if (reg.csosn) {
@@ -147,6 +148,7 @@ export function montarNota(o, modelo = '55') {
     // PIS e COFINS
     const basePis = Math.max(0, liquido - (f.tiraIcmsPis ? x.vICMS : 0));
     x.pisCst = f.pisCst;
+    x.basePis = f.pis || f.cofins ? arred(basePis) : 0;
     x.vPIS = arred(basePis * (f.pis || 0) / 100);
     x.vCOFINS = arred(basePis * (f.cofins || 0) / 100);
     for (const k of ['vBC', 'vICMS', 'vIPI', 'vPIS', 'vCOFINS', 'vCredSN']) t[k] = arred(t[k] + x[k]);
@@ -184,6 +186,112 @@ function conferir(o, modelo, f, c, dest, itens, interestadual, ufEmit, ufDest) {
     if (!dest.final) p.push({ onde: 'pedido', texto: 'NFC-e é só para consumidor final. Cliente com inscrição estadual: use a NF-e (55).' });
   }
   return p;
+}
+
+// ---------- envio para o servidor de emissão (PHP com NFePHP)
+
+// Forma de pagamento do cadastro → código da nota
+function tipoPagamento(nome) {
+  const n = semAcento(nome);
+  for (const [chave, tipo] of [['pix', 'pix'], ['dinheiro', 'dinheiro'], ['debito', 'debito'], ['credito', 'credito'], ['cartao', 'credito'],
+    ['boleto', 'boleto'], ['transfer', 'transferencia'], ['ted', 'transferencia'], ['deposito', 'deposito'], ['cheque', 'cheque']]) {
+    if (n.includes(chave)) return tipo;
+  }
+  return 'outros';
+}
+
+const endereco = (e, telefone) => ({
+  logradouro: e.logradouro, numero: e.numero, complemento: e.complemento || '', bairro: e.bairro,
+  ibge: e.ibge, cidade: e.cidade, uf: e.uf, cep: e.cep, telefone: telefone || '',
+});
+
+export function servidorPronto() {
+  const f = fiscal();
+  return !!(f.servidor && f.servidorChave);
+}
+
+// Dados do emitente, usados também no teste do servidor
+export function emitenteNota() {
+  const f = fiscal(), cfg = config(), reg = REGIMES[f.regime] || REGIMES.simples;
+  return {
+    cnpj: cfg.documento, nome: f.razao || cfg.empresa, fantasia: cfg.empresa, ie: f.ie, im: f.im || '', cnae: f.cnae || '', crt: reg.crt,
+    endereco: endereco(f, cfg.telefone),
+  };
+}
+
+// Tudo o que o servidor precisa para emitir: os valores já calculados aqui (montarNota)
+export function dadosEmissao(o, modelo) {
+  const n = montarNota(o, modelo), f = n.f, c = n.cliente, csosn = n.regime.csosn;
+  const t = n.t;
+  const docOk = c && ['cpf', 'cnpj'].includes(tipoDocumento(c.documento));
+  const destinatario = modelo === '55' || docOk ? {
+    documento: c.documento, nome: c.nome, indIEDest: modelo === '65' ? 9 : n.dest.indIEDest, ie: c.ie || '', email: c.email || '',
+    endereco: modelo === '55' ? endereco(c, c.telefone) : null,
+  } : null;
+
+  // pagamento: as parcelas do pedido, proporcionais ao valor da nota
+  const ps = (o.pagamento && o.pagamento.parcelas) || [];
+  const totalParc = ps.reduce((s, p) => s + p.valor, 0);
+  const fator = totalParc > 0 ? t.vNF / totalParc : 0;
+  const grupos = new Map();
+  for (const p of ps) {
+    const tipo = tipoPagamento(p.forma), prazo = !p.recebidoEm && p.venc > hoje() ? 1 : 0, k = tipo + prazo;
+    const g = grupos.get(k) || { tipo, prazo, valor: 0, descricao: p.forma };
+    g.valor += p.valor * fator;
+    grupos.set(k, g);
+  }
+  let pagamentos = [...grupos.values()].map(g => ({ ...g, valor: arred(g.valor) }));
+  if (pagamentos.length) {
+    const dif = arred(t.vNF - pagamentos.reduce((s, g) => s + g.valor, 0));
+    pagamentos[pagamentos.length - 1].valor = arred(pagamentos[pagamentos.length - 1].valor + dif);
+  } else {
+    pagamentos = modelo === '65' ? [{ tipo: 'dinheiro', prazo: 0, valor: t.vNF }] : [{ tipo: 'sem', prazo: 0, valor: 0 }];
+  }
+  // duplicatas: parcelas que ainda vão vencer (só NF-e e quando os valores batem com a nota)
+  const duplicatas = modelo === '55' && Math.abs(fator - 1) < 0.0001
+    ? ps.filter(p => !p.recebidoEm && p.venc > hoje()).map(p => ({ vencimento: p.venc, valor: p.valor })) : [];
+
+  const obs = [`Pedido ${o.numero}.`];
+  if (csosn) obs.push('Documento emitido por ME ou EPP optante pelo Simples Nacional. Não gera direito a crédito fiscal de IPI.');
+  if (t.vCredSN > 0) obs.push(`Permite o aproveitamento do crédito de ICMS no valor de R$ ${t.vCredSN.toFixed(2).replace('.', ',')}, correspondente à alíquota de ${String(f.pCredSN).replace('.', ',')}%, nos termos do art. 23 da LC 123/2006.`);
+  if (o.pagamento && o.pagamento.obs) obs.push(o.pagamento.obs);
+
+  return {
+    modelo, ambiente: f.ambiente === 'producao' ? 1 : 2, serie: n.serie, numero: n.numero, natureza: f.natureza,
+    idDest: n.interestadual ? 2 : 1, indFinal: modelo === '65' || n.dest.final ? 1 : 0, indPres: 1,
+    emitente: emitenteNota(), destinatario,
+    itens: n.itens.map((x, i) => ({
+      codigo: String(i + 1), descricao: x.desc, ncm: x.ncm, cfop: x.cfop, unidade: x.un, qtd: x.qtd, vUnit: x.vUnit, vProd: x.valor,
+      vDesc: x.desconto, vFrete: x.frete, origem: String(x.origem),
+      icms: { simples: csosn, codigo: String(x.icmsCod), aliq: x.aliqIcms, vBC: x.vBC, vICMS: x.vICMS, pCredSN: f.pCredSN, vCredSN: x.vCredSN },
+      ipi: f.ipi ? { cst: x.ipiCst, aliq: x.ipi, vBC: x.baseIPI, vIPI: x.vIPI } : null,
+      pis: { cst: x.pisCst, aliq: f.pis || 0, vBC: x.basePis, valor: x.vPIS },
+      cofins: { cst: x.pisCst, aliq: f.cofins || 0, vBC: x.basePis, valor: x.vCOFINS },
+    })),
+    totais: t, pagamentos, duplicatas, infCpl: obs.join(' '),
+  };
+}
+
+// Chamada ao servidor. Devolve o JSON (ou o PDF, com pdf = true); erro vira exceção com a mensagem
+export async function chamarServidor(acao, dados, pdf = false) {
+  const f = fiscal();
+  if (!servidorPronto()) throw new Error('Configure o servidor de emissão em Fiscal → Dados fiscais da empresa.');
+  let r;
+  try {
+    r = await fetch(`${f.servidor.replace(/\/+$/, '')}/index.php?acao=${acao}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Chave': f.servidorChave }, body: JSON.stringify(dados),
+    });
+  } catch (e) {
+    throw new Error('Não foi possível falar com o servidor de emissão. Confira a internet e o endereço do servidor.');
+  }
+  if (r.ok && pdf) return r.blob();
+  const j = await r.json().catch(() => ({ erro: `O servidor respondeu ${r.status}.` }));
+  if (!r.ok) {
+    const e = new Error(j.erro || `O servidor respondeu ${r.status}.`);
+    e.detalhes = j.detalhes || [];
+    throw e;
+  }
+  return j;
 }
 
 export const avisosNota = n => {

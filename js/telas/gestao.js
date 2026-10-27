@@ -296,6 +296,7 @@ export function cartaoFiscal() {
     <label>Regime tributário</label>
     <div class="regimes">${Object.keys(REGIMES).map(k => `<button class="${f.regime === k ? 'ativo' : ''}" data-acao="fiscal-regime" data-r="${k}">${REGIMES[k].nome}</button>`).join('')}</div>
     <p class="nota">CNPJ: ${doc === 'cnpj' ? '✓ válido' : 'preencha o CNPJ em Dados da marmoraria'}. Ao trocar o regime, os códigos e percentuais abaixo voltam ao padrão dele.</p>
+    ${campo('razao', 'Razão social (como no CNPJ)', `placeholder="${esc(config().empresa)}"`, 'style="margin-top:10px"')}
     <div class="linha" style="margin-top:10px">
       ${campo('ie', 'Inscrição estadual')}${campo('im', 'Inscrição municipal')}${campo('cnae', 'CNAE', 'inputmode="numeric"')}
     </div>
@@ -332,6 +333,14 @@ export function cartaoFiscal() {
     <label style="margin-top:10px">Ambiente</label>
     <div class="seg">${[['homologacao', 'Homologação (teste)'], ['producao', 'Produção (vale de verdade)']].map(([v, n]) => `<button class="${f.ambiente === v ? 'ativo' : ''}" data-acao="fiscal-ambiente" data-v="${v}">${n}</button>`).join('')}</div>
     <p class="nota">Os percentuais e códigos são o padrão de cada regime. Confirme com o contador: alíquotas de ICMS mudam por estado e por produto.</p>
+    <h3 class="sub">Servidor de emissão</h3>
+    <p class="nota" style="margin-top:0">O servidor PHP (pasta <code>nfe</code>) que guarda o certificado digital e fala com a SEFAZ.</p>
+    <div class="linha">
+      ${campo('servidor', 'Endereço do servidor', 'placeholder="https://notas.suaempresa.com.br" inputmode="url"', 'style="flex:2 1 240px"')}
+      ${campo('servidorChave', 'Chave de acesso do servidor', 'type="password" autocomplete="off"')}
+    </div>
+    <button style="margin-top:10px" data-acao="fiscal-testar">Testar o servidor</button>
+    <div id="fiscal-teste"></div>
   </div>`;
 }
 
