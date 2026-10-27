@@ -372,6 +372,71 @@ h3.sub { font-size: 14px; color: var(--muted); font-weight: 600; margin: 18px 0 
 .txt-erro { color: var(--danger); }
 .txt-ok { color: var(--ok); }
 
+/* ---------- submenus ---------- */
+.lateral { overflow-y: auto; }
+.lateral .marca { color: #fff; text-decoration: none; border-radius: 12px; padding: 6px 8px; margin-bottom: 14px; box-shadow: none !important; }
+.lateral .marca:hover { background: rgba(255, 255, 255, .08); }
+.lateral .grupo {
+  all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px;
+  color: rgba(255, 255, 255, .74); font-weight: 500; cursor: pointer; transition: background .15s, color .15s;
+}
+.lateral .grupo:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.lateral .grupo.atual { color: #fff; font-weight: 600; }
+.lateral .grupo:focus-visible { outline: 2px solid var(--gold); }
+.lateral .grupo i { margin-left: auto; display: flex; opacity: .6; transition: transform .15s; }
+.lateral .grupo i svg { width: 16px; height: 16px; }
+.lateral .grupo.aberto i { transform: rotate(90deg); }
+.lateral .subs { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 22px; padding-left: 12px; border-left: 1px solid rgba(255, 255, 255, .16); }
+.lateral a.sub { padding: 8px 10px; font-size: 14px; font-weight: 400; }
+.lateral a.sub.ativo { font-weight: 600; }
+.sub-abas { display: none; }
+a.heroi { text-decoration: none; transition: transform .15s; }
+a.heroi:hover { transform: translateY(-1px); }
+.heroi-link { position: absolute; right: 18px; bottom: 12px; z-index: 1; font-style: normal; font-size: 13px; opacity: .85; }
+.selos-venda { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+@media (max-width: 899px) {
+  .sub-abas { display: flex; gap: 6px; overflow-x: auto; margin: -4px -16px 14px; padding: 0 16px 2px; scrollbar-width: none; }
+  .sub-abas a { flex: none; padding: 7px 13px; border-radius: 999px; font-size: 14px; text-decoration: none; color: var(--muted); background: var(--card); border: 1px solid var(--line); }
+  .sub-abas a.ativo { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
+  .heroi-link { display: none; }
+}
+
+/* ---------- relatórios ---------- */
+.filtro-periodo .chips { padding-bottom: 8px; }
+.barras { display: flex; flex-direction: column; gap: 10px; }
+.barra-l { display: grid; grid-template-columns: minmax(110px, 1.2fr) 2fr auto; gap: 12px; align-items: center; font-size: 14px; }
+.barra-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-n small { display: block; color: var(--muted); font-size: 12px; }
+.barra-t { height: 12px; background: var(--card-2); border-radius: 6px; overflow: hidden; }
+.barra-t i { display: block; height: 100%; background: var(--accent-2); border-radius: 0 4px 4px 0; }
+.barra-l b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.colunas { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: end; height: 200px; }
+.coluna { display: flex; flex-direction: column; align-items: center; height: 100%; min-width: 0; outline: none; }
+.coluna-t { flex: 1; width: 100%; max-width: 34px; display: flex; align-items: flex-end; border-bottom: 1px solid var(--line); }
+.coluna-t i { display: block; width: 100%; background: var(--accent-2); border-radius: 4px 4px 0 0; transition: opacity .15s; }
+.coluna:hover .coluna-t i, .coluna:focus .coluna-t i { opacity: .75; }
+.coluna small { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.coluna-v { font-size: 10px; color: var(--muted); height: 14px; white-space: nowrap; opacity: 0; transition: opacity .15s; }
+.coluna:hover .coluna-v, .coluna:focus .coluna-v { opacity: 1; }
+@media (max-width: 620px) { .barra-l { grid-template-columns: 1fr auto; } .barra-t { grid-column: 1 / -1; grid-row: 2; } }
+
+/* ---------- compras e estoque ---------- */
+.importar-xml { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-style: dashed; }
+.importar-xml > div { flex: 1 1 220px; display: flex; flex-direction: column; }
+.importar-xml span { font-size: 13px; color: var(--muted); }
+.importar-xml .botao { margin: 0; }
+.item-compra { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr auto auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.item-compra:first-child { border-top: 0; }
+.item-compra input, .item-compra select { padding: 8px 9px; min-width: 0; }
+.item-compra .qtd { display: flex; align-items: center; gap: 4px; }
+.item-compra .qtd span { font-size: 12px; color: var(--muted); }
+.item-compra b { white-space: nowrap; text-align: right; }
+.tabela-nota td small { display: block; color: var(--muted); font-weight: 400; }
+@media (max-width: 720px) {
+  .item-compra { grid-template-columns: 1fr 1fr; }
+  .item-compra .nome-item, .item-compra select { grid-column: 1 / -1; }
+}
+
 /* ---------- nota fiscal ---------- */
 .regimes { display: flex; flex-wrap: wrap; gap: 6px; }
 .regimes button { border-radius: 999px; padding: 8px 14px; font-size: 14px; }

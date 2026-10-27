@@ -185,9 +185,8 @@ export function telaFinanceiro() {
   const kpi = (rotulo, valor, detalhe, cls = '') => `<div class="card kpi ${cls}"><small>${rotulo}</small><b>${valor}</b><span>${detalhe}</span></div>`;
   const qtd = (l, um, varios) => `${l.length} ${l.length === 1 ? um : varios}`;
   return {
-    nav: 'financeiro', titulo: 'Financeiro',
+    nav: 'receber', titulo: 'Contas a receber',
     corpo: `
-      <h2>Contas a receber</h2>
       <div class="kpis">
         ${kpi('A receber', moeda(soma(n.abertas, x => x.p.valor)), qtd(n.abertas, 'parcela em aberto', 'parcelas em aberto'))}
         ${kpi('Vencido', moeda(soma(n.vencidas, x => x.p.valor)), qtd(n.vencidas, 'parcela atrasada', 'parcelas atrasadas'), n.vencidas.length ? 'alerta-kpi' : '')}

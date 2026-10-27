@@ -8,18 +8,17 @@ import { aviso, perguntar } from '../nucleo.js';
 import { config } from '../db.js';
 import { baixar, imprimirPdf } from '../folha-pdf.js';
 import { nomeCliente } from './orcamento.js';
-import { cartaoFiscal } from './gestao.js';
 import { lista } from '../db.js';
 import { diaBR } from '../util.js';
 import { totalGeral } from '../calc.js';
 
-const LINK = { ajustes: '#/ajustes', cadastros: '#/cadastros/materiais' };
+const LINK = { ajustes: '#/empresa', cadastros: '#/cadastros/materiais' };
 
 export function telaNota(id) {
   const o = achar('orcamentos', id);
   if (!o) return null;
   if (o.status !== 'aprovado') {
-    return { nav: 'orcamentos', titulo: 'Nota fiscal', voltar: `#/o/${id}`, corpo: '<div class="card vazio">A nota fiscal é feita a partir de um orçamento aprovado.</div>' };
+    return { nav: 'notas', titulo: 'Nota fiscal', voltar: `#/o/${id}`, corpo: '<div class="card vazio">A nota fiscal é feita a partir de um orçamento aprovado.</div>' };
   }
   const emitida = o.nfe && o.nfe.status !== 'cancelada' ? o.nfe : null;
   const modelo = emitida ? emitida.modelo : (o.nota && o.nota.modelo) || '55';
@@ -29,7 +28,7 @@ export function telaNota(id) {
   const nomeIcms = cod => (csosn ? CODIGOS_ICMS.csosn : CODIGOS_ICMS.cst)[cod] || cod;
   const avisos = avisosNota(n);
   return {
-    nav: 'orcamentos', titulo: `Nota fiscal · ${esc(o.numero)}`, voltar: `#/o/${id}`,
+    nav: 'notas', titulo: `Nota fiscal · ${esc(o.numero)}`, voltar: `#/o/${id}`,
     corpo: `
       ${cartaoEmitida(o)}
       <div class="card" ${emitida ? 'hidden' : ''}>
@@ -106,7 +105,7 @@ export function telaNota(id) {
 
       ${emitida ? '' : `<div class="card" style="margin-top:18px">
         <button class="primario largo" data-acao="nota-emitir" ${n.problemas.length || !servidorPronto() ? 'disabled' : ''}>Emitir ${modelo === '65' ? 'NFC-e' : 'NF-e'} nº ${n.numero}</button>
-        <p class="nota" style="text-align:center">${!servidorPronto() ? 'Configure o servidor de emissão em <a href="#/fiscal/config">Dados fiscais da empresa</a>.'
+        <p class="nota" style="text-align:center">${!servidorPronto() ? 'Configure o servidor de emissão em <a href="#/cadastros/impostos">Cadastros → Impostos</a>.'
           : n.problemas.length ? 'Complete os dados acima para liberar a emissão.' : `Será enviada à SEFAZ em ${n.f.ambiente === 'producao' ? '<b>produção</b> (vale de verdade)' : 'homologação (teste)'}.`}</p>
       </div>`}`,
   };
@@ -114,12 +113,8 @@ export function telaNota(id) {
 
 // ---------- módulo Fiscal: notas dos pedidos e configuração
 
-const ABAS_FISCAL = { notas: 'Notas dos pedidos', config: 'Dados fiscais da empresa' };
-
-export function telaFiscal(aba) {
-  if (!ABAS_FISCAL[aba]) return null;
-  const chips = `<div class="chips">${Object.keys(ABAS_FISCAL).map(a => `<a class="${a === aba ? 'ativo' : ''}" href="#/fiscal${a === 'notas' ? '' : '/' + a}">${ABAS_FISCAL[a]}</a>`).join('')}</div>`;
-  if (aba === 'config') return { nav: 'fiscal', titulo: 'Fiscal', corpo: chips + cartaoFiscal() };
+export function telaFiscal() {
+  const chips = '';
   const pedidos = lista('orcamentos').filter(o => o.status === 'aprovado')
     .sort((a, b) => (b.statusEm || '').localeCompare(a.statusEm || ''))
     .map(o => ({ o, n: montarNota(o, (o.nota && o.nota.modelo) || '55') }));
@@ -128,7 +123,7 @@ export function telaFiscal(aba) {
   const kpi = (rotulo, valor, detalhe) => `<div class="card kpi"><small>${rotulo}</small><b>${valor}</b><span>${detalhe}</span></div>`;
   const f = pedidos.length ? pedidos[0].n.f : null;
   return {
-    nav: 'fiscal', titulo: 'Fiscal',
+    nav: 'notas', titulo: 'Emissor de notas',
     corpo: `${chips}
       <div class="kpis">
         ${kpi('Notas emitidas', emitidas.length, 'autorizadas')}
@@ -142,7 +137,7 @@ export function telaFiscal(aba) {
               : n.problemas.length ? `Falta: ${esc(n.problemas[0].texto)}${n.problemas.length > 1 ? ` e mais ${n.problemas.length - 1}` : ''}` : 'Pronta para emitir'}</div></div>
           <div class="valor">${moeda(n.t.vNF)}</div></a>`).join('')
         : '<div class="card vazio">Nenhum pedido aprovado ainda.</div>'}
-      ${f ? `<p class="nota">Regime: ${esc(n0(pedidos).regime.nome)} · ${f.ambiente === 'producao' ? 'produção' : 'homologação (teste)'}. Altere em <a href="#/fiscal/config">Dados fiscais da empresa</a>.</p>` : ''}`,
+      ${f ? `<p class="nota">Regime: ${esc(n0(pedidos).regime.nome)} · ${f.ambiente === 'producao' ? 'produção' : 'homologação (teste)'}. Altere em <a href="#/cadastros/impostos">Cadastros → Impostos</a>.</p>` : ''}`,
   };
 }
 const n0 = l => l[0].n;

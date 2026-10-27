@@ -5,7 +5,7 @@ import { agora } from './util.js';
 import * as P from './padroes.js';
 
 const NOME = 'marmoraria';
-export const LOJAS = ['materiais', 'acabamentos', 'catalogo', 'tipos', 'clientes', 'orcamentos', 'config'];
+export const LOJAS = ['materiais', 'acabamentos', 'catalogo', 'tipos', 'clientes', 'orcamentos', 'config', 'fornecedores', 'compras'];
 
 const dados = Object.fromEntries(LOJAS.map(l => [l, []]));
 let idb = null;
@@ -14,7 +14,7 @@ const pedido = r => new Promise((ok, erro) => { r.onsuccess = () => ok(r.result)
 
 export async function abrir() {
   try {
-    const r = indexedDB.open(NOME, 1);
+    const r = indexedDB.open(NOME, 2);   // versão 2: fornecedores e compras
     r.onupgradeneeded = () => {
       for (const l of LOJAS) if (!r.result.objectStoreNames.contains(l)) r.result.createObjectStore(l, { keyPath: 'id' });
     };

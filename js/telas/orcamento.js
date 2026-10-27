@@ -1,6 +1,6 @@
 // Orçamentos: lista, tela do orçamento, escolha do tipo de peça, editor da peça e itens
 import { lista, achar, gravar, excluir, config } from '../db.js';
-import { num, moeda, m2, pct, emCampo, esc, novoId, agora, dataBR, semAcento } from '../util.js';
+import { num, moeda, m2, pct, emCampo, esc, novoId, agora, dataBR, semAcento, diaLocal } from '../util.js';
 import { redesenhar, ir, aviso, perguntar } from '../nucleo.js';
 import { desenho, amostra } from '../desenho.js';
 import { pode } from '../sinc.js';
@@ -61,6 +61,7 @@ const ICONES = {
   imprimir: ic('<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>'),
   corte: ic('<path d="M3 17L17 3l4 4L7 21z"/><path d="M14 6l2 2M11 9l2 2M8 12l2 2"/>'),
   financeiro: ic('<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'),
+  nota: ic('<path d="M6 2.500h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 7.500h6M9 11h6"/>'),
 };
 
 // Atalhos do orçamento, sem precisar abrir: enviar, imprimir, corte e financeiro.
@@ -113,6 +114,53 @@ export function telaLista() {
       <input class="busca" type="search" data-busca="orc" value="${esc(filtro.texto)}" placeholder="Buscar por cliente ou número" aria-label="Buscar orçamento">
       <div id="lista-orc">${listaFiltrada()}</div>`,
   };
+}
+
+// ---------- vendas (orçamentos aprovados = pedidos)
+
+const filtroVendas = { texto: '', mes: '' };
+
+export function telaVendas() {
+  const todas = lista('orcamentos').filter(o => o.status === 'aprovado');
+  const dia = o => diaLocal(o.statusEm || o.criadoEm).slice(0, 7);
+  const meses = [...new Set(todas.map(dia))].sort().reverse();
+  const t = semAcento(filtroVendas.texto);
+  const vendas = todas.filter(o => !filtroVendas.mes || dia(o) === filtroVendas.mes)
+    .filter(o => !t || semAcento(nomeCliente(o) + ' ' + o.numero).includes(t))
+    .sort((a, b) => (b.statusEm || b.criadoEm).localeCompare(a.statusEm || a.criadoEm));
+  const total = vendas.reduce((s, o) => s + totalGeral(o), 0);
+  const nomeMes = m => new Date(m + '-15T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const kpi = (r, v, d) => `<div class="card kpi"><small>${r}</small><b>${v}</b><span>${d}</span></div>`;
+  const semNota = vendas.filter(o => !(o.nfe && o.nfe.status === 'autorizada')).length;
+  return {
+    nav: 'vendas', titulo: 'Vendas',
+    corpo: `
+      <div class="kpis">
+        ${kpi('Vendido', moeda(total), `${vendas.length} ${vendas.length === 1 ? 'pedido' : 'pedidos'}${filtroVendas.mes ? '' : ' no total'}`)}
+        ${kpi('Ticket médio', moeda(vendas.length ? total / vendas.length : 0), 'por pedido')}
+        ${pode('fiscal') ? kpi('Sem nota fiscal', semNota, semNota === 1 ? 'pedido' : 'pedidos') : ''}
+      </div>
+      <div class="chips" style="margin-top:14px">
+        <button class="${!filtroVendas.mes ? 'ativo' : ''}" data-acao="vendas-mes" data-m="">Todas</button>
+        ${meses.slice(0, 12).map(m => `<button class="${filtroVendas.mes === m ? 'ativo' : ''}" data-acao="vendas-mes" data-m="${m}">${nomeMes(m)}</button>`).join('')}
+      </div>
+      <input class="busca" type="search" data-busca="vendas" value="${esc(filtroVendas.texto)}" placeholder="Buscar por cliente ou número" aria-label="Buscar venda">
+      <div id="lista-vendas">${vendas.map(linhaVenda).join('') || '<div class="card vazio">Nenhuma venda. Uma venda é um orçamento aprovado.</div>'}</div>`,
+  };
+}
+
+function linhaVenda(o) {
+  const pag = pode('financeiro') ? situacaoPagamento(o) : null;
+  const nf = o.nfe && o.nfe.status === 'autorizada' ? `${o.nfe.modelo === '65' ? 'NFC-e' : 'NF-e'} ${o.nfe.numero}` : '';
+  return `<div class="card orc">
+    <a class="linha-orc" href="#/o/${o.id}">
+      <div class="info"><div class="nome">${esc(nomeCliente(o))}</div>
+        <div class="det">${esc(o.numero)} · aprovado em ${dataBR(o.statusEm || o.criadoEm)}</div>
+        <div class="selos-venda">${pag ? `<span class="chip ${pag.cls}">${pag.texto}</span>` : ''}${pode('fiscal') ? `<span class="chip ${nf ? 'st-aprovado' : 'st-rascunho'}">${nf || 'Sem nota'}</span>` : ''}</div></div>
+      <div class="valor">${moeda(totalGeral(o))}</div>
+    </a>
+    <div class="acoes-orc">${atalhosOrcamento(o)}${pode('fiscal') ? `<a class="botao" href="#/o/${o.id}/nota">${ICONES.nota}Nota</a>` : ''}</div>
+  </div>`;
 }
 
 // Situação do orçamento: o que aconteceu e os botões do próximo passo
@@ -487,6 +535,14 @@ export function tecla(e) {
 }
 
 export function entrada(el) {
+  if (el.dataset.busca === 'vendas') {
+    filtroVendas.texto = el.value;
+    const pos = el.selectionStart;
+    redesenhar();
+    const novo = document.querySelector('[data-busca="vendas"]');
+    if (novo) { novo.focus(); novo.setSelectionRange(pos, pos); }
+    return;
+  }
   if (el.dataset.busca === 'orc') {
     filtro.texto = el.value;
     document.getElementById('lista-orc').innerHTML = listaFiltrada();
@@ -534,6 +590,7 @@ export function entrada(el) {
 export const acoes = {
   'novo-orc': () => ir('#/o/' + criarOrcamento().id),
   'filtro-status': el => { filtro.status = el.dataset.status; redesenhar(); },
+  'vendas-mes': el => { filtroVendas.mes = el.dataset.m; redesenhar(); },
   'atualizar-precos': () => perguntarPrecos(orcDaTela()),
   'situacao': el => {
     const o = orcDaTela();

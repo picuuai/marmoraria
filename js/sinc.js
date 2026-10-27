@@ -21,8 +21,9 @@ export const MODULOS = {
   clientes: 'Clientes',
   cadastros: 'Cadastros e preços',
   custos: 'Custos e lucro',
+  relatorios: 'Relatórios',
   financeiro: 'Financeiro (recebimentos)',
-  fiscal: 'Nota fiscal',
+  fiscal: 'Fiscal (notas, compras e estoque)',
   ajustes: 'Ajustes da marmoraria',
 };
 const TODOS = Object.fromEntries(Object.keys(MODULOS).map(m => [m, true]));
@@ -56,6 +57,8 @@ export const pode = modulo => !cfg || ehPrincipal() || !cfg.acessos || !!cfg.ace
 export function organizar(dados) {
   const o = {};
   for (const l of LOJAS) o[l] = (dados[l] || []).slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // armazéns criados por uma versão mais nova do sistema passam adiante sem ser apagados
+  for (const l of Object.keys(dados)) if (!(l in o) && Array.isArray(dados[l])) o[l] = dados[l];
   return o;
 }
 
@@ -69,6 +72,7 @@ export function juntar(local, remoto) {
     }
     o[l] = [...mapa.values()];
   }
+  for (const l of Object.keys(remoto)) if (!(l in o) && Array.isArray(remoto[l])) o[l] = remoto[l];
   return organizar(o);
 }
 

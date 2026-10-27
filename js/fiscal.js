@@ -165,7 +165,7 @@ export function montarNota(o, modelo = '55') {
 // O que impede a emissão (lista vazia = pronta)
 function conferir(o, modelo, f, c, dest, itens, interestadual, ufEmit, ufDest) {
   const p = [], cfg = config();
-  if (tipoDocumento(cfg.documento) !== 'cnpj') p.push({ onde: 'ajustes', texto: 'CNPJ da marmoraria (Ajustes → Dados da marmoraria)' });
+  if (tipoDocumento(cfg.documento) !== 'cnpj') p.push({ onde: 'ajustes', texto: 'CNPJ da marmoraria (Cadastros → Empresa)' });
   if (!String(f.ie || '').trim()) p.push({ onde: 'ajustes', texto: 'Inscrição estadual da marmoraria' });
   for (const [k, n] of [['cep', 'CEP'], ['logradouro', 'rua'], ['numero', 'número'], ['bairro', 'bairro'], ['cidade', 'cidade'], ['uf', 'estado'], ['ibge', 'código do município (vem pelo CEP)']]) {
     if (!String(f[k] || '').trim()) p.push({ onde: 'ajustes', texto: `Endereço da marmoraria: ${n}` });
@@ -275,7 +275,7 @@ export function dadosEmissao(o, modelo) {
 // Chamada ao servidor. Devolve o JSON (ou o PDF, com pdf = true); erro vira exceção com a mensagem
 export async function chamarServidor(acao, dados, pdf = false) {
   const f = fiscal();
-  if (!servidorPronto()) throw new Error('Configure o servidor de emissão em Fiscal → Dados fiscais da empresa.');
+  if (!servidorPronto()) throw new Error('Configure o servidor de emissão em Cadastros → Impostos.');
   let r;
   try {
     r = await fetch(`${f.servidor.replace(/\/+$/, '')}/index.php?acao=${acao}`, {

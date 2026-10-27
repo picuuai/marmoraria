@@ -1,10 +1,10 @@
 // Guarda os arquivos do sistema no aparelho para ele abrir sem internet.
 // Ao publicar uma versão nova, troque o número abaixo para os aparelhos atualizarem.
-const VERSAO = 'marmoraria-20261026-2208';
+const VERSAO = 'marmoraria-20261026-2217';
 const ARQUIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'icone.svg', 'icone-192.png', 'icone-512.png', 'icone-mascara-512.png', 'icone-apple.png', 'css/app.css',
   'js/main.js', 'js/nucleo.js', 'js/util.js', 'js/padroes.js', 'js/db.js', 'js/calc.js', 'js/desenho.js', 'js/sinc.js', 'js/marca.js', 'js/pdf.js', 'js/folha-pdf.js', 'js/cliente.js', 'js/fiscal.js',
-  'js/telas/orcamento.js', 'js/telas/folhas.js', 'js/telas/gestao.js', 'js/telas/financeiro.js', 'js/telas/nota.js',
+  'js/telas/orcamento.js', 'js/telas/folhas.js', 'js/telas/gestao.js', 'js/telas/financeiro.js', 'js/telas/nota.js', 'js/telas/estoque.js', 'js/telas/relatorios.js',
 ];
 
 self.addEventListener('install', e => {

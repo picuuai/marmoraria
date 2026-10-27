@@ -29,6 +29,8 @@ export const semAcento = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/
 
 // Datas sem hora (vencimentos): texto AAAA-MM-DD no fuso do aparelho
 export const hoje = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+// Dia (AAAA-MM-DD) no fuso do aparelho de um instante gravado em ISO (UTC)
+export const diaLocal = iso => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 export const diaBR = d => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 export function somarDias(d, dias) {
   const [a, m, di] = d.split('-').map(Number);

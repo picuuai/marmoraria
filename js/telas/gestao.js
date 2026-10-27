@@ -1,13 +1,13 @@
 // Início, clientes, cadastros e ajustes
 import { lista, achar, gravar, excluir, config, exportar, importar } from '../db.js';
-import { num, moeda, pct, emCampo, esc, novoId, agora, semAcento, tipoDocumento } from '../util.js';
+import { num, moeda, pct, emCampo, esc, novoId, agora, semAcento, tipoDocumento, hoje, diaLocal } from '../util.js';
 import { redesenhar, ir, aviso, aplicarTema, temaSalvo, salvarTema, fundoSalvo, salvarFundo, instalacao, jaInstalado } from '../nucleo.js';
 import { logo, prepararLogo } from '../marca.js';
 import { amostra, atualizarTexturas } from '../desenho.js';
 import { LADOS, TIPOS_BORDA, RETO, ESQUADRIA, totalGeral, resultado } from '../calc.js';
 import { criarOrcamento, linhaOrcamento, atualizarRascunhos } from './orcamento.js';
 import { cartao as cartaoSinc, carregarAparelhos, pode } from '../sinc.js';
-import { camposCliente, resumoFalta, aoAlterarCliente, consultarCep, UFS } from '../cliente.js';
+import { camposCliente, resumoFalta, aoAlterarCliente, consultarCep, UFS, notaDocumento } from '../cliente.js';
 import { REGIMES, CODIGOS_ICMS, ORIGENS, fiscal } from '../fiscal.js';
 import { numerosFinanceiro, formas } from './financeiro.js';
 import { FORMAS } from '../padroes.js';
@@ -21,9 +21,9 @@ const saudacao = () => { const h = new Date().getHours(); return h < 12 ? 'Bom d
 
 export function telaInicio() {
   const orcs = lista('orcamentos');
-  const mes = new Date().toISOString().slice(0, 7);
+  const mes = hoje().slice(0, 7);
   const abertos = orcs.filter(o => o.status === 'rascunho' || o.status === 'enviado');
-  const aprovadosMes = orcs.filter(o => o.status === 'aprovado' && (o.statusEm || o.criadoEm).slice(0, 7) === mes);
+  const aprovadosMes = orcs.filter(o => o.status === 'aprovado' && diaLocal(o.statusEm || o.criadoEm).slice(0, 7) === mes);
   const decididos = orcs.filter(o => o.status === 'aprovado' || o.status === 'perdido');
   const soma = (l, f) => l.reduce((s, o) => s + f(o), 0);
   const kpi = (rotulo, valor, detalhe) => `<div class="card kpi"><small>${rotulo}</small><b>${valor}</b><span>${detalhe}</span></div>`;
@@ -32,14 +32,15 @@ export function telaInicio() {
     nav: 'inicio', titulo: 'Início',
     topo: pode('orcamentos') ? '<button class="primario" data-acao="novo-orc">+ Novo orçamento</button>' : '',
     corpo: `
-      <div class="heroi">
+      <a class="heroi" href="#/empresa" title="Dados da empresa">
         ${logo('grande')}
         <div>
           <small>${saudacao()}</small>
           <b>${esc(config().empresa)}</b>
           <span>${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
         </div>
-      </div>
+        <em class="heroi-link">Dados da empresa ›</em>
+      </a>
       ${instalacao.evento && !jaInstalado() ? `<div class="card instalar">
         <div><b>Instalar o aplicativo</b><span>Abre direto da tela inicial, em tela cheia.</span></div>
         <button class="primario" data-acao="instalar">Instalar</button></div>` : ''}
@@ -122,7 +123,7 @@ export function telaCliente(id) {
 
 // ---------- cadastros
 
-const ABAS = { materiais: 'Materiais', acabamentos: 'Acabamentos', produtos: 'Produtos', servicos: 'Serviços', tipos: 'Tipos de peça', pagamento: 'Formas de pagamento' };
+export const ABAS = { materiais: 'Materiais', acabamentos: 'Acabamentos', produtos: 'Produtos', servicos: 'Serviços', tipos: 'Tipos de peça', pagamento: 'Formas de pagamento', impostos: 'Impostos' };
 const attrs = (loja, id, prop, numero) => `data-cad="${loja}" data-id="${id}" data-prop="${prop}"${numero ? ' data-num' : ''}`;
 const botaoExcluir = (loja, r) => `<button class="perigo" data-acao="cad-excluir" data-loja="${loja}" data-id="${r.id}" data-confirma="Excluir?" aria-label="Excluir ${esc(r.nome)}">✕</button>`;
 
@@ -252,14 +253,14 @@ export function telaCadastros(aba) {
     produtos: () => lista('catalogo').filter(c => c.tipo === 'produto').map(cartaoItem).join('') + novo('Novo produto', 'catalogo', 'produto'),
     servicos: () => lista('catalogo').filter(c => c.tipo === 'servico').map(cartaoItem).join('') + novo('Novo serviço', 'catalogo', 'servico'),
     tipos: () => lista('tipos').sort((a, b) => (a.ordem || 0) - (b.ordem || 0)).map(cartaoTipo).join('') + novo('Novo tipo de peça', 'tipos'),
+    impostos: () => cartaoImpostos(),
     pagamento: () => '<p class="dica esq">Aparecem no pagamento do pedido. A taxa é o que a maquininha ou o banco desconta; o Financeiro mostra o valor líquido.</p>' +
       formas().map(cartaoForma).join('') + '<button class="largo tracejado" data-acao="forma-nova">+ Nova forma de pagamento</button>',
   }[aba]();
   return {
-    nav: 'cadastros', titulo: 'Cadastros',
+    nav: aba, titulo: ABAS[aba],
     corpo: `
-      <div class="chips">${Object.keys(ABAS).map(a => `<a class="${a === aba ? 'ativo' : ''}" href="#/cadastros/${a}">${ABAS[a]}</a>`).join('')}</div>
-      ${aba === 'pagamento' ? '' : '<p class="dica esq">Mudanças aqui valem para os próximos orçamentos e para os que estão em rascunho. Os já enviados ou aprovados guardam os preços do dia em que foram feitos.</p>'}
+      ${['pagamento', 'impostos'].includes(aba) ? '' : '<p class="dica esq">Mudanças aqui valem para os próximos orçamentos e para os que estão em rascunho. Os já enviados ou aprovados guardam os preços do dia em que foram feitos.</p>'}
       ${conteudo}`,
     depois: () => {
       if (!focar) return;
@@ -285,8 +286,8 @@ function cartaoInstalar() {
     <p class="nota">O botão de instalar aparece aqui sozinho quando o navegador permite. Ele só funciona no endereço da internet (não em <code>localhost</code> aberto por outro aparelho).</p>`;
 }
 
-// Dados da empresa para a nota fiscal. Trocar o regime aplica os códigos e percentuais padrão dele.
-export function cartaoFiscal() {
+// Impostos e emissão de notas. Trocar o regime aplica os códigos e percentuais padrão dele.
+export function cartaoImpostos() {
   const f = fiscal(), reg = REGIMES[f.regime] || REGIMES.simples;
   const at = (prop, extra = '') => `id="fi-${prop}" data-fiscal="${prop}" value="${esc(f[prop] ?? '')}" ${extra}`;
   const campo = (prop, rotulo, extra = '', estilo = '') => `<div ${estilo}><label for="fi-${prop}">${rotulo}</label><input ${at(prop, extra)}></div>`;
@@ -295,22 +296,7 @@ export function cartaoFiscal() {
   return `<div class="card">
     <label>Regime tributário</label>
     <div class="regimes">${Object.keys(REGIMES).map(k => `<button class="${f.regime === k ? 'ativo' : ''}" data-acao="fiscal-regime" data-r="${k}">${REGIMES[k].nome}</button>`).join('')}</div>
-    <p class="nota">CNPJ: ${doc === 'cnpj' ? '✓ válido' : 'preencha o CNPJ em Dados da marmoraria'}. Ao trocar o regime, os códigos e percentuais abaixo voltam ao padrão dele.</p>
-    ${campo('razao', 'Razão social (como no CNPJ)', `placeholder="${esc(config().empresa)}"`, 'style="margin-top:10px"')}
-    <div class="linha" style="margin-top:10px">
-      ${campo('ie', 'Inscrição estadual')}${campo('im', 'Inscrição municipal')}${campo('cnae', 'CNAE', 'inputmode="numeric"')}
-    </div>
-    <h3 class="sub">Endereço da empresa</h3>
-    <div class="linha">
-      ${campo('cep', 'CEP', 'inputmode="numeric" placeholder="00000-000"')}${campo('logradouro', 'Rua / avenida', '', 'style="flex:3 1 220px"')}
-    </div>
-    <div class="linha">
-      ${campo('numero', 'Número')}${campo('complemento', 'Complemento')}${campo('bairro', 'Bairro', '', 'style="flex:2 1 160px"')}
-    </div>
-    <div class="linha">
-      ${campo('cidade', 'Cidade', '', 'style="flex:3 1 200px"')}
-      <div><label for="fi-uf">Estado</label><select id="fi-uf" data-fiscal="uf"><option value=""></option>${UFS.map(u => `<option ${f.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
-    </div>
+    <p class="nota">${doc === 'cnpj' ? '' : 'Falta o CNPJ em <a href="#/empresa">Cadastros → Empresa</a>. '}Ao trocar o regime, os códigos e percentuais abaixo voltam ao padrão dele.</p>
     <h3 class="sub">Impostos padrão</h3>
     <div class="linha">
       <div style="flex:2 1 240px"><label for="fi-icmsCod">${reg.csosn ? 'CSOSN' : 'CST do ICMS'}</label>
@@ -344,6 +330,63 @@ export function cartaoFiscal() {
   </div>`;
 }
 
+// ---------- empresa (dados da marmoraria, usados no orçamento e na nota fiscal)
+
+export function telaEmpresa() {
+  const c = config(), f = fiscal();
+  const cfgCampo = (prop, rotulo, extra = '', estilo = '') => `<div ${estilo}><label for="a-${prop}">${rotulo}</label>
+    <input id="a-${prop}" data-cfg="${prop}" value="${esc(c[prop] ?? '')}" ${extra}></div>`;
+  const fCampo = (prop, rotulo, extra = '', estilo = '') => `<div ${estilo}><label for="fi-${prop}">${rotulo}</label>
+    <input id="fi-${prop}" data-fiscal="${prop}" value="${esc(f[prop] ?? '')}" ${extra}></div>`;
+  const doc = tipoDocumento(c.documento);
+  return {
+    nav: 'empresa', titulo: 'Empresa',
+    corpo: `
+      <div class="card">
+        <div class="logo-ajuste">
+          ${logo('grande')}
+          <div>
+            <b>Logo</b>
+            <p class="nota" style="margin:2px 0 8px">Aparece no menu, na tela inicial e no topo das folhas. De preferência com fundo transparente (PNG).</p>
+            <label class="botao pequeno" style="margin:0" for="arq-logo">${c.logo ? 'Trocar a logo' : 'Enviar a logo'}</label>
+            ${c.logo ? '<button class="pequeno perigo" data-acao="remover-logo">Remover</button>' : ''}
+            <input id="arq-logo" type="file" accept="image/*" data-logo hidden>
+          </div>
+        </div>
+        <div class="linha">${cfgCampo('empresa', 'Nome fantasia (aparece no orçamento)', '', 'style="flex:2 1 220px"')}${fCampo('razao', 'Razão social (como no CNPJ)', `placeholder="${esc(c.empresa)}"`, 'style="flex:2 1 220px"')}</div>
+        <div class="linha">
+          <div><label for="a-documento">CNPJ ou CPF</label><input id="a-documento" data-cfg="documento" value="${esc(c.documento || '')}" inputmode="numeric">
+            <div class="nota ${doc === 'invalido' ? 'erro' : ''}" id="emp-doc">${notaDocumento(c.documento)}</div></div>
+          ${fCampo('ie', 'Inscrição estadual')}${fCampo('im', 'Inscrição municipal')}${fCampo('cnae', 'CNAE', 'inputmode="numeric"')}
+        </div>
+        <div class="linha">${cfgCampo('telefone', 'Telefone / WhatsApp', 'inputmode="tel"')}${cfgCampo('email', 'E-mail', 'type="email"')}${cfgCampo('site', 'Site ou Instagram')}</div>
+      </div>
+      <h2>Endereço</h2>
+      <div class="card">
+        <div class="linha">
+          ${fCampo('cep', 'CEP', 'inputmode="numeric" placeholder="00000-000"')}${fCampo('logradouro', 'Rua / avenida', '', 'style="flex:3 1 220px"')}
+        </div>
+        <div class="linha">
+          ${fCampo('numero', 'Número')}${fCampo('complemento', 'Complemento')}${fCampo('bairro', 'Bairro', '', 'style="flex:2 1 160px"')}
+        </div>
+        <div class="linha">
+          ${fCampo('cidade', 'Cidade', '', 'style="flex:3 1 200px"')}
+          <div><label for="fi-uf">Estado</label><select id="fi-uf" data-fiscal="uf"><option value=""></option>${UFS.map(u => `<option ${f.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+        </div>
+        <p class="nota">Com o CEP, rua, bairro e cidade vêm sozinhos. O endereço sai no orçamento e na nota fiscal.</p>
+      </div>
+      <a class="card linha-orc" href="#/cadastros/impostos"><div class="info"><div class="nome">Impostos e nota fiscal</div>
+        <div class="det">${esc((REGIMES[f.regime] || REGIMES.simples).nome)} · numeração, ambiente e servidor de emissão</div></div><span class="botao pequeno">Abrir</span></a>`,
+  };
+}
+
+// O endereço em uma linha (orçamento e folhas) acompanha o endereço completo da empresa
+function comporEndereco(c) {
+  const f = c.fiscal || {};
+  if (!f.logradouro) return;
+  c.endereco = [[f.logradouro, f.numero].filter(Boolean).join(', '), f.bairro, f.cidade && `${f.cidade}/${f.uf || ''}`].filter(Boolean).join(' - ');
+}
+
 const fiscalGravado = () => { const c = config(); if (!c.fiscal) c.fiscal = { ...fiscal() }; return c; };
 const NUMEROS_FISCAIS = ['aliqIcms', 'pCredSN', 'pis', 'cofins', 'serie55', 'proxima55', 'serie65', 'proxima65'];
 
@@ -359,22 +402,8 @@ export function telaAjustes() {
     depois: carregarAparelhos,
     corpo: `
       ${completo ? `
-      <h2>Dados da marmoraria</h2>
-      <div class="card campos">
-        <div class="logo-ajuste">
-          ${logo('grande')}
-          <div>
-            <b>Logo</b>
-            <p class="nota" style="margin:2px 0 8px">Aparece no menu, na tela inicial e no topo das folhas. De preferência com fundo transparente (PNG).</p>
-            <label class="botao pequeno" style="margin:0" for="arq-logo">${config().logo ? 'Trocar a logo' : 'Enviar a logo'}</label>
-            ${config().logo ? '<button class="pequeno perigo" data-acao="remover-logo">Remover</button>' : ''}
-            <input id="arq-logo" type="file" accept="image/*" data-logo hidden>
-          </div>
-        </div>
-        ${campo('empresa', 'Nome (aparece no orçamento)')}
-        <div class="linha">${campo('telefone', 'Telefone / WhatsApp', 'inputmode="tel"')}${campo('documento', 'CNPJ ou CPF')}</div>
-        ${campo('endereco', 'Endereço')}
-      </div>
+      <a class="card linha-orc" href="#/empresa">${logo()}<div class="info"><div class="nome">${esc(c.empresa)}</div>
+        <div class="det">Logo, CNPJ, endereço e dados da empresa ficam em Cadastros → Empresa</div></div><span class="botao pequeno">Abrir</span></a>
       <h2>Padrões do orçamento</h2>
       <div class="card">
         <div class="linha">
@@ -442,10 +471,12 @@ export function entrada(el) {
     const c = fiscalGravado(), k = el.dataset.fiscal;
     c.fiscal[k] = NUMEROS_FISCAIS.includes(k) ? num(el.value) : el.value;
     if (k === 'cidade' || k === 'uf') c.fiscal.ibge = '';
+    comporEndereco(c);
     gravar('config', c);
     if (k === 'cep') consultarCep(el.value).then(e => {
       if (!e) return;
       Object.assign(c.fiscal, e);
+      comporEndereco(c);
       gravar('config', c);
       for (const p of ['cep', 'logradouro', 'bairro', 'cidade', 'uf']) { const x = document.getElementById('fi-' + p); if (x && x !== document.activeElement) x.value = c.fiscal[p]; }
       const n = document.getElementById('fi-numero'); if (n && !c.fiscal.numero) n.focus();
@@ -460,6 +491,10 @@ export function entrada(el) {
     c[el.dataset.cfg] = 'num' in el.dataset ? num(el.value) : el.value;
     gravar('config', c);
     if (el.dataset.cfg === 'empresa') document.querySelector('.lateral .marca b').textContent = el.value;
+    if (el.dataset.cfg === 'documento') {
+      const nota = document.getElementById('emp-doc');
+      if (nota) { nota.textContent = notaDocumento(el.value); nota.classList.toggle('erro', tipoDocumento(el.value) === 'invalido'); }
+    }
   }
 }
 
