@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao, criarCodigoReutilizavel, lerCodigoReutilizavel } from '../js/convite.js';
+import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao, criarCodigoReutilizavel, lerCodigoReutilizavel, DURACAO_TESTE, testeExpirou } from '../js/convite.js';
 
 // Solicitação antiga: deve continuar utilizável anos depois de criada.
 const agora = Date.now() - 5 * 365 * 86400000;
@@ -94,5 +94,38 @@ await teste('código reutilizável não aceita perfil desconhecido nem códigos 
   assert.throws(() => lerCodigoReutilizavel(cod));
   assert.throws(() => lerCodigoReutilizavel(a.pedido));
   assert.throws(() => lerCodigoReutilizavel('MAR-CONEXAO-1:incompleto'));
+});
+await teste('chave de teste vence exatamente 15 dias após a geração, sem reiniciar ao usar', () => {
+  const inicio = Date.now();
+  const c = criarCodigoReutilizavel(cfg, 'teste', inicio);
+  const primeiro = lerCodigoReutilizavel(c, inicio);
+  const depois = lerCodigoReutilizavel(c, inicio + 14 * 86400000);
+  assert.equal(primeiro.expiraEm, inicio + DURACAO_TESTE);
+  assert.deepEqual(primeiro, depois);
+  assert.equal(testeExpirou(primeiro, primeiro.expiraEm - 1), false);
+  assert.equal(testeExpirou(primeiro, primeiro.expiraEm), true);
+  assert.throws(() => lerCodigoReutilizavel(c, primeiro.expiraEm), /teste/);
+});
+await teste('teste com prazo ausente, ampliado ou início futuro é recusado', () => {
+  for (const d of [
+    { ...cfg, p: 'teste' },
+    { p:'teste', inicio: 1, expiraEm: DURACAO_TESTE + 2 },
+    { p:'teste', inicio: Date.now() + 86400000, expiraEm: Date.now() + 86400000 + DURACAO_TESTE },
+  ]) assert.equal(testeExpirou(d), true);
+});
+await teste('aprovação individual de teste carrega o mesmo prazo de 15 dias', async () => {
+  const inicio = Date.now();
+  const c = await aprovarSolicitacao(a.pedido, cfg, 'teste', inicio);
+  const d = await abrirLiberacao(c, a, inicio);
+  assert.equal(d.p, 'teste'); assert.equal(d.expiraEm, inicio + DURACAO_TESTE);
+  await assert.rejects(abrirLiberacao(c, a, d.expiraEm), /teste/);
+});
+await teste('Dono e Vendedor continuam sem expiração automática', () => {
+  for (const p of ['dono','vendedor']) {
+    const c = criarCodigoReutilizavel(cfg,p);
+    const d = lerCodigoReutilizavel(c, Date.now() + 50 * 365 * 86400000);
+    assert.equal(testeExpirou(d, Number.MAX_SAFE_INTEGER), false);
+    assert.equal(d.expiraEm, undefined);
+  }
 });
 console.log(`${n} verificações concluídas.`);

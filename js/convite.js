@@ -5,19 +5,27 @@ const rsa = { name: 'RSA-OAEP', hash: 'SHA-256' };
 const b64 = v => btoa(String.fromCharCode(...new Uint8Array(v)));
 const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const codigo = (tipo, valor) => tipo + b64(enc.encode(JSON.stringify(valor)));
+export const DURACAO_TESTE = 15 * 86400000;
+export function testeExpirou(d, agora = Date.now()) {
+  if ((d?.p || d?.perfil) !== 'teste') return false;
+  return !Number.isFinite(d.inicio) || !Number.isFinite(d.expiraEm)
+    || d.expiraEm - d.inicio !== DURACAO_TESTE || d.inicio > agora || d.expiraEm <= agora;
+}
+const dadosTeste = (perfil, agora) => perfil === 'teste' ? { inicio: agora, expiraEm: agora + DURACAO_TESTE } : {};
 // Mesma autorização portátil do QR Code existente. Deve ser guardada como uma chave.
-export function criarCodigoReutilizavel(conexao, perfil) {
-  const d = { r: conexao.repo, t: conexao.token, p: perfil };
-  validarConexao(d);
+export function criarCodigoReutilizavel(conexao, perfil, agora = Date.now()) {
+  const d = { r: conexao.repo, t: conexao.token, p: perfil, ...dadosTeste(perfil, agora) };
+  validarConexao(d, agora);
   return codigo('MAR-CONEXAO-1:', d);
 }
-function validarConexao(d) {
-  if (!d || !['dono', 'vendedor'].includes(d.p) || typeof d.r !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(d.r) || typeof d.t !== 'string' || !d.t.trim()) throw new Error('Código de conexão inválido.');
+function validarConexao(d, agora = Date.now()) {
+  if (!d || !['dono', 'vendedor', 'teste'].includes(d.p) || typeof d.r !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(d.r) || typeof d.t !== 'string' || !d.t.trim()) throw new Error('Código de conexão inválido.');
+  if (testeExpirou(d, agora)) throw new Error('O período de teste de 15 dias terminou ou o prazo é inválido. Peça outra autorização ao dono.');
 }
-export function lerCodigoReutilizavel(texto) {
+export function lerCodigoReutilizavel(texto, agora = Date.now()) {
   const d = ler(texto, 'MAR-CONEXAO-1:');
-  validarConexao(d);
-  return { r: d.r, t: d.t, p: d.p };
+  validarConexao(d, agora);
+  return { r: d.r, t: d.t, p: d.p, ...(d.p === 'teste' ? { inicio: d.inicio, expiraEm: d.expiraEm } : {}) };
 }
 function ler(texto, tipo) {
   const s = String(texto).replace(/\s/g, '');
@@ -40,16 +48,16 @@ export async function criarSolicitacao(nome, agora = Date.now()) {
 }
 export async function aprovarSolicitacao(texto, conexao, perfil, agora = Date.now()) {
   const pedido = lerSolicitacao(texto, agora);
-  if (!['vendedor', 'dono'].includes(perfil)) throw new Error('Escolha o perfil de acesso.');
+  if (!['vendedor', 'dono', 'teste'].includes(perfil)) throw new Error('Escolha o perfil de acesso.');
   const publica = await crypto.subtle.importKey('spki', bytes(pedido.publica), rsa, false, ['encrypt']);
   const aes = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const dados = { id: pedido.id, nome: pedido.nome, r: conexao.repo, t: conexao.token, p: perfil, criado: agora };
+  const dados = { id: pedido.id, nome: pedido.nome, r: conexao.repo, t: conexao.token, p: perfil, criado: agora, ...dadosTeste(perfil, agora) };
   const conteudo = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, enc.encode(JSON.stringify(dados)));
   const chave = await crypto.subtle.encrypt(rsa, publica, await crypto.subtle.exportKey('raw', aes));
   return codigo('MAR-ACESSO-1:', { chave: b64(chave), iv: b64(iv), conteudo: b64(conteudo) });
 }
-export async function abrirLiberacao(texto, pendente) {
+export async function abrirLiberacao(texto, pendente, agora = Date.now()) {
   if (!pendente) throw new Error('Gere uma solicitação neste navegador antes de liberar.');
   const resposta = ler(texto, 'MAR-ACESSO-1:');
   let d;
@@ -59,6 +67,7 @@ export async function abrirLiberacao(texto, pendente) {
     const aes = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
     d = JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes(resposta.iv) }, aes, bytes(resposta.conteudo))));
   } catch { throw new Error('Esta liberação não corresponde à solicitação deste navegador ou foi alterada.'); }
-  if (d.id !== pendente.id || !['dono', 'vendedor'].includes(d.p) || typeof d.r !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(d.r) || typeof d.t !== 'string' || !d.t) throw new Error('Liberação inválida.');
+  if (d.id !== pendente.id) throw new Error('Liberação inválida.');
+  validarConexao(d, agora);
   return d;
 }

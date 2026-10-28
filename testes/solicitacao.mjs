@@ -35,7 +35,7 @@ assert.match(solicitante.telaBloqueio(), /sem prazo de validade/);
 console.log('OK: aparelho gera pedido sem acesso a dados e permanece bloqueado');
 campo('pedido-erro').innerHTML = '';
 await solicitante.acoes['pedido-conferir'](botao());
-assert.match(campo('pedido-erro').innerHTML, /Somente o computador principal/);
+assert.match(campo('pedido-erro').innerHTML, /Somente o dono/);
 console.log('OK: aparelho bloqueado não pode aprovar');
 
 store = new Map([['marmoraria-sinc', JSON.stringify({ repo: 'ficticia/privado', token: 'teste-ficticio', principal: true })]]);
@@ -67,11 +67,16 @@ console.log('OK: liberação conecta, registra aparelho secundário, aplica perf
 
 store = new Map([['marmoraria-sinc', JSON.stringify({ repo: 'ficticia/privado', token: 'teste-ficticio', principal: false, perfil: 'dono' })]]);
 const secundario = await import('../js/sinc.js?secundario');
-assert.doesNotMatch(secundario.cartao(), /Aprovar solicitação/);
+assert.match(secundario.cartao(), /Aprovar solicitação/);
+assert.match(secundario.cartao(), /Gerar código reutilizável/);
+assert.match(secundario.cartao(), /Aparelhos autorizados/);
 campo('pedido-erro').innerHTML = '';
+campo('dono-pedido').value = p.pedido;
+campo('dono-perfil').value = 'vendedor';
+await secundario.acoes['pedido-conferir'](botao());
 await secundario.acoes['pedido-aprovar'](botao());
-assert.match(campo('pedido-erro').innerHTML, /computador principal/);
-console.log('OK: secundário com perfil Dono também não pode aprovar');
+assert.match(secundario.cartao(), /id="dono-liberacao"/);
+console.log('OK: Dono em outro computador mantém geração de códigos, aprovação e administração');
 store = novo;
 store.set('marmoraria-pedido-acesso', JSON.stringify(p));
 solicitante.acoes['pedido-cancelar']();
@@ -97,9 +102,12 @@ for (let i = 0; i < 2; i++) {
 assert.notEqual(ids[0], ids[1]);
 console.log('OK: mesmo código conecta dois navegadores novos com IDs independentes e perfil vendedor');
 campo('codigo-erro').innerHTML = '';
-await secundario.acoes['codigo-gerar'](botao());
-assert.match(campo('codigo-erro').innerHTML, /computador principal/);
-console.log('OK: secundário não pode gerar código reutilizável');
+store = new Map([['marmoraria-sinc', JSON.stringify({ repo: 'ficticia/privado', token: 'teste-ficticio', principal: false, perfil: 'vendedor' })]]);
+const vendedor = await import('../js/sinc.js?vendedor');
+assert.doesNotMatch(vendedor.cartao(), /Gerar código reutilizável|Aprovar solicitação|Aparelhos autorizados/);
+await vendedor.acoes['codigo-gerar'](botao());
+assert.match(campo('codigo-erro').innerHTML, /Somente o dono/);
+console.log('OK: vendedor continua sem geração de códigos nem administração');
 store = new Map();
 const recusado = await import('../js/sinc.js?credencial-revogada');
 campo('codigo-entrada').value = reutilizavel;

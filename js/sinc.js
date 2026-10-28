@@ -10,11 +10,14 @@ import { LOJAS, tudo, substituir, apagarTudo, definirAoMudar } from './db.js';
 import { esc, agora, novoId } from './util.js';
 import { redesenhar, aviso } from './nucleo.js';
 import { atualizarTexturas } from './desenho.js';
-import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao, criarCodigoReutilizavel, lerCodigoReutilizavel } from './convite.js';
+import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao, criarCodigoReutilizavel, lerCodigoReutilizavel, testeExpirou, DURACAO_TESTE } from './convite.js';
 
 const CHAVE_PEDIDO = 'marmoraria-pedido-acesso';
+const CHAVE_LIMPEZA = 'marmoraria-limpeza-teste';
+const limpezaPendente = () => { try { return localStorage.getItem(CHAVE_LIMPEZA) === '1'; } catch { return false; } };
 let pedidoDono = null, liberacaoDono = '', pedidoPerfil = 'vendedor';
 let codigoReutilizavel = '', perfilReutilizavel = 'vendedor';
+let codigoExpiraEm = 0;
 
 function painelCodigoReutilizavel() {
   return `<h2>Código reutilizável de acesso</h2><div class="card">
@@ -24,9 +27,11 @@ function painelCodigoReutilizavel() {
     <button data-acao="codigo-gerar">Gerar código reutilizável</button>
     ${codigoReutilizavel ? `<label for="codigo-reutilizavel">Código para guardar</label>
       <textarea id="codigo-reutilizavel" readonly rows="3">${esc(codigoReutilizavel)}</textarea>
+      ${codigoExpiraEm ? `<p class="nota">Teste válido até ${new Date(codigoExpiraEm).toLocaleString('pt-BR')}.</p>` : ''}
       <button data-acao="pedido-copiar" data-campo="codigo-reutilizavel">Copiar código</button>
       <button data-acao="codigo-baixar">Baixar código para guardar</button>` : ''}
-    <p class="nota">Quem tiver este código poderá conectar aparelhos com o perfil escolhido. Ele não vence por tempo; deixa de funcionar se a chave do GitHub for revogada ou trocada. Para invalidá-lo, use Trocar a chave e apague a antiga no GitHub. Desconectar apenas um aparelho não invalida este código.</p>
+    <p class="nota">Dono/desenvolvedor administra códigos e aparelhos. Vendedor mantém acesso a orçamentos e clientes. Teste libera o uso do sistema por 15 dias contados da geração, sem administrar acessos; ao vencer, desconecta e apaga os dados deste app no navegador de teste. As chaves de Dono e Vendedor continuam sem prazo.</p>
+    <p class="nota">Guarde os códigos como uma chave. Para invalidar um código sem prazo, use Trocar a chave e revogue a antiga no GitHub. Desconectar apenas um aparelho não invalida seu código.</p>
     <div id="codigo-erro" role="status"></div></div>`;
 }
 
@@ -73,7 +78,7 @@ function painelAprovacao() {
       <button class="primario" data-acao="pedido-aprovar">Aprovar e gerar liberação</button>` : ''}
     ${liberacaoDono ? `<label for="dono-liberacao">Código de liberação</label><textarea id="dono-liberacao" readonly rows="3">${esc(liberacaoDono)}</textarea>
       <button data-acao="pedido-copiar" data-campo="dono-liberacao">Copiar liberação</button>
-      <p class="nota">Envie à pessoa para colar no mesmo navegador que fez a solicitação. Sem prazo de validade. O aparelho aparecerá na lista após conectar.</p>` : ''}
+      <p class="nota">Envie à pessoa para colar no mesmo navegador que fez a solicitação. Dono e Vendedor não têm prazo. Teste vence 15 dias após gerar a liberação. O aparelho aparecerá na lista após conectar.</p>` : ''}
     <div id="pedido-erro" role="status"></div></div>`;
 }
 
@@ -104,12 +109,14 @@ export const MODULOS = {
 const TODOS = Object.fromEntries(Object.keys(MODULOS).map(m => [m, true]));
 const PERFIS = {
   vendedor: { nome: 'Vendedor', detalhe: 'orçamentos e clientes', acessos: { orcamentos: true, clientes: true } },
-  dono: { nome: 'Dono', detalhe: 'acesso total', acessos: TODOS },
+  dono: { nome: 'Dono / desenvolvedor', detalhe: 'administra o sistema e os acessos', acessos: TODOS },
+  teste: { nome: 'Teste — 15 dias', detalhe: 'uso completo, sem gerar chaves', acessos: TODOS },
 };
 
 let cfg = ler(CHAVE);               // { repo, token, ultima, principal, perfil, acessos }
 let status = cfg ? 'pendente' : 'off', msg = '';
 let relogio = 0, rodando = false, denovo = false, qrAberto = '', qrPerfil = 'vendedor', ultimaVerif = 0;
+let relogioTeste = 0, encerrandoTeste = null;
 
 function ler(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 function gravarCfg() {
@@ -120,11 +127,48 @@ const aparelho = () => (/Android|iPhone|iPad/i.test(navigator.userAgent) ? 'celu
 const ehPrincipal = () => !!cfg && cfg.principal !== false;
 
 // Aparelho sem conexão não abre o sistema
-export const bloqueado = () => !cfg;
+export const bloqueado = () => !cfg || testeExpirou(cfg) || limpezaPendente();
 // Este aparelho pode usar o módulo? O principal pode tudo; nos outros vale o que o principal definiu.
 // É um controle de tela: quem tem a chave no aparelho tem, tecnicamente, acesso ao repositório inteiro.
 // (aparelho conectado antes de existirem os acessos continua com tudo até o principal definir)
-export const pode = modulo => !cfg || ehPrincipal() || !cfg.acessos || !!cfg.acessos[modulo];
+export const pode = modulo => !cfg || (!testeExpirou(cfg) && (ehPrincipal() || !cfg.acessos || !!cfg.acessos[modulo]));
+// Dono com acesso completo também pode conectar aparelhos a partir de outro computador.
+// Manter principal separado preserva revogação, sincronização e os acessos definidos nele.
+const podeConectarOutros = () => !!cfg && (ehPrincipal()
+  || (cfg.perfil === 'dono' && Object.keys(MODULOS).every(pode))) && !bloqueado() && cfg.perfil !== 'teste';
+
+function agendarFimTeste() {
+  clearTimeout(relogioTeste);
+  if (cfg?.perfil !== 'teste') return;
+  relogioTeste = setTimeout(() => { conferirTeste(); agendarFimTeste(); }, Math.min(Math.max(0, cfg.expiraEm - Date.now()), 60000));
+}
+export async function conferirTeste() {
+  if (encerrandoTeste) { await encerrandoTeste; return true; }
+  if ((!cfg || !testeExpirou(cfg)) && !limpezaPendente()) return false;
+  // Sem consulta ou escrita remota: a expiração funciona também offline.
+  cfg = null; gravarCfg();
+  clearTimeout(relogioTeste); clearTimeout(relogio); denovo = false;
+  qrAberto = ''; codigoReutilizavel = ''; pedidoDono = null; liberacaoDono = '';
+  for (const k of Object.keys(localStorage)) if (k.startsWith('marmoraria-')) localStorage.removeItem(k);
+  // getItem/removeItem também permitem limpeza em navegadores com enumeração limitada.
+  for (const k of [CHAVE, CHAVE_APAR, CHAVE_PEDIDO]) localStorage.removeItem(k);
+  localStorage.setItem(CHAVE_LIMPEZA, '1');
+  localStorage.setItem(CHAVE_REVOGADO, 'teste');
+  const tela = document.getElementById('app');
+  if (tela) tela.innerHTML = '<div class="bloqueio"><h1>Período de teste encerrado</h1><p>Limpando os dados deste aplicativo neste navegador…</p></div>';
+  encerrandoTeste = (async () => {
+    try {
+      await apagarTudo();
+      localStorage.removeItem(CHAVE_LIMPEZA);
+      location.hash = '#/'; location.reload();
+    } catch {
+      // Mantém bloqueio e marcador para repetir a limpeza na próxima abertura.
+      if (tela) tela.innerHTML = '<div class="bloqueio"><h1>Período de teste encerrado</h1><p>Não foi possível concluir a limpeza. Feche e abra o aplicativo para tentar novamente.</p></div>';
+    }
+  })();
+  await encerrandoTeste;
+  return true;
+}
 
 // ---------- junção das alterações
 
@@ -257,11 +301,12 @@ async function verificarAparelho(forcar = false) {
   if (!forcar && Date.now() - ultimaVerif < 5 * 60e3) return true;
   ultimaVerif = Date.now();
   const eu = meuAparelho(), { lista } = await lerAparelhos(), reg = lista[eu.id];
+  if (!cfg || await conferirTeste()) return false;
   if (reg && reg.revogado) { await apagarEsteAparelho('revogado'); return false; }
   const quando = agora();
   if (!reg || reg.principal !== ehPrincipal() || Date.now() - Date.parse(reg.ultimoAcesso || 0) > 15 * 60e3) {
     await alterarAparelhos(l => {
-      l[eu.id] = { nome: eu.nome, conectadoEm: quando, acessos: acessosPadrao(), ...(l[eu.id] || {}), tipo: aparelho(), principal: ehPrincipal(), ultimoAcesso: quando };
+      l[eu.id] = { nome: eu.nome, conectadoEm: quando, acessos: acessosPadrao(), ...(l[eu.id] || {}), tipo: aparelho(), principal: ehPrincipal(), perfil: cfg.perfil, ...(cfg.perfil === 'teste' ? { expiraEm: cfg.expiraEm } : {}), ultimoAcesso: quando };
       return l;
     });
   }
@@ -292,10 +337,10 @@ const haQuanto = iso => {
   return m < 2 ? 'agora' : m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dia(s)`;
 };
 
-// Lista de aparelhos na tela de ajustes (só no computador principal)
+// Lista de aparelhos na tela de ajustes (Dono/desenvolvedor com acesso completo)
 export async function carregarAparelhos() {
   const caixa = document.getElementById('sinc-aparelhos');
-  if (!caixa || !cfg) return;
+  if (!caixa || !podeConectarOutros()) return;
   try {
     const { lista } = await lerAparelhos();
     const eu = meuAparelho().id;
@@ -310,7 +355,7 @@ export async function carregarAparelhos() {
         estado = 'Desconexão pendente: sai quando abrir o sistema com internet.';
         botoes = `<button class="pequeno" data-acao="apar-remover" data-id="${id}">Tirar da lista</button>`;
       } else {
-        estado = `Último acesso ${haQuanto(d.ultimoAcesso)} · conectado em ${d.conectadoEm ? new Date(d.conectadoEm).toLocaleDateString('pt-BR') : '—'}`;
+        estado = `Último acesso ${haQuanto(d.ultimoAcesso)} · conectado em ${d.conectadoEm ? new Date(d.conectadoEm).toLocaleDateString('pt-BR') : '—'}${d.perfil === 'teste' && d.expiraEm ? ` · teste até ${new Date(d.expiraEm).toLocaleString('pt-BR')}` : ''}`;
         if (id !== eu) botoes = `<button class="pequeno perigo" data-acao="apar-revogar" data-id="${id}" data-confirma="Tocar de novo para desconectar">Desconectar</button>`;
       }
       return `<div class="aparelho">
@@ -329,6 +374,7 @@ export async function carregarAparelhos() {
 }
 
 async function trocarChave(token) {
+  if (!podeConectarOutros()) throw new Error('Somente Dono/desenvolvedor pode trocar a chave.');
   token = token.trim();
   if (!token) throw new Error('cole a chave nova');
   const teste = { repo: cfg.repo, token };
@@ -352,16 +398,20 @@ function agendar(ms = 2500) {
 }
 
 export async function sincronizar() {
+  if (await conferirTeste()) return;
   if (!cfg) return;
   if (rodando) { denovo = true; return; }
   if (!navigator.onLine) { definirStatus('offline'); return; }
   rodando = true;
   definirStatus('sincronizando');
+  const sessao = cfg;
   try {
     if (!(await verificarAparelho())) return;   // foi desconectado pelo computador principal
+    if (cfg !== sessao || await conferirTeste()) return;
     for (let tentativa = 0; tentativa < 4; tentativa++) {
       const localStr = JSON.stringify(organizar(tudo()));
       const rem = await lerArquivo(ARQ_DADOS);
+      if (cfg !== sessao || await conferirTeste()) return;
       const remoto = rem ? JSON.parse(rem.texto).lojas : null;
       const final = remoto ? juntar(JSON.parse(localStr), remoto) : JSON.parse(localStr);
       corrigirNumeros(final);
@@ -370,6 +420,7 @@ export async function sincronizar() {
         try { await gravarArquivo(ARQ_DADOS, JSON.stringify({ sistema: 'marmoraria', versao: 1, lojas: final }), rem ? rem.sha : null, `sync ${aparelho()} ${new Date().toLocaleString('pt-BR')}`); }
         catch (e) { if (e.conflito) continue; throw e; }   // outro aparelho gravou antes: junta de novo
       }
+      if (cfg !== sessao || await conferirTeste()) return;
       if (finalStr !== localStr) {
         // se algo mudou aqui durante a sincronização, preserva e sincroniza de novo
         const agoraStr = JSON.stringify(organizar(tudo()));
@@ -394,22 +445,27 @@ export async function sincronizar() {
   }
 }
 
-async function conectar(repo, token, principal = true, perfil = 'dono') {
+async function conectar(repo, token, principal = true, perfil = 'dono', prazo = {}) {
+  if (limpezaPendente()) throw new Error('Feche e abra o app para concluir a limpeza do teste anterior.');
+  if (perfil === 'teste' && testeExpirou({ ...prazo, p: perfil })) throw new Error('O período de teste terminou ou o prazo é inválido.');
   repo = repo.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, '');
   token = token.trim();
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('o repositório deve ficar no formato usuario/nome');
   if (!token) throw new Error('cole a chave do GitHub');
-  const novo = { repo, token, principal, perfil };
+  const novo = { repo, token, principal: perfil === 'teste' ? false : principal, perfil, ...(perfil === 'teste' ? { inicio: prazo.inicio, expiraEm: prazo.expiraEm } : {}) };
   const r = await gh('', {}, novo);
   if (r.status === 404 || r.status === 401) throw new Error(await diagnosticar(novo));
   if (!r.ok) throw erroGH(r, await r.text());
   if (!(await r.json()).private) throw new Error('o repositório precisa ser PRIVADO (os dados da marmoraria ficariam públicos)');
+  if (testeExpirou(novo)) throw new Error('O período de teste terminou durante a conexão.');
   cfg = { ...novo, acessos: principal ? TODOS : { ...(PERFIS[perfil] || PERFIS.vendedor).acessos } };
   gravarCfg();
+  agendarFimTeste();
   // cada conexão é um registro novo: um aparelho desconectado antes pode ser liberado de novo pelo QR
   try { localStorage.setItem(CHAVE_APAR, JSON.stringify({ id: novoId(), nome: meuAparelho().nome })); } catch (e) {}
   ultimaVerif = 0;
   await sincronizar();
+  if (!cfg) throw new Error('A conexão foi encerrada. Confira a autorização ou o prazo de teste.');
   if (cfg && status === 'erro') { const m = msg; cfg = null; gravarCfg(); definirStatus('off'); throw new Error(m || 'falha ao sincronizar'); }
 }
 
@@ -473,22 +529,23 @@ function formularioConexao() {
 export function cartao() {
   if (!cfg) return `<div class="card">${formularioConexao()}</div>`;
   const principal = ehPrincipal();
+  const conectarOutros = podeConectarOutros();
   return `
     <div class="card">
       <div id="sinc-caixa">${caixaHTML()}</div>
+      ${cfg.perfil === 'teste' ? `<div class="alerta s-offline">Teste até ${new Date(cfg.expiraEm).toLocaleString('pt-BR')}. Ao vencer, este navegador será desconectado e os dados locais deste app serão apagados. Os dados da empresa no GitHub permanecem.</div>` : ''}
       <label for="sinc-nome" style="margin-top:12px">Nome deste aparelho (é como ele aparece na lista de aparelhos autorizados)</label>
       <input id="sinc-nome" data-apar-nome="${meuAparelho().id}" value="${esc(meuAparelho().nome)}" placeholder="Ex.: Celular do João" autocomplete="off">
       <div class="linha" style="margin-top:12px">
         <button class="primario" data-acao="sinc-agora">Sincronizar agora</button>
-        ${principal ? '<button data-acao="sinc-qr">Conectar outro aparelho</button>' : ''}
+        ${conectarOutros ? '<button data-acao="sinc-qr">Conectar outro aparelho</button>' : ''}
         <button class="perigo" data-acao="sinc-sair" data-confirma="Tocar de novo para desconectar">Desconectar este aparelho</button>
       </div>
-      <div id="sinc-qr">${qrAberto}</div>
+      <div id="sinc-qr">${conectarOutros ? qrAberto : ''}</div>
       ${principal ? '' : '<p class="nota">Ao desconectar, os dados da marmoraria são apagados deste aparelho (continuam na nuvem).</p>'}
     </div>
-    ${principal ? `
-    ${painelCodigoReutilizavel()}
-    ${painelAprovacao()}
+    ${conectarOutros ? painelCodigoReutilizavel() + painelAprovacao() : ''}
+    ${conectarOutros ? `
     <h2>Aparelhos autorizados</h2>
     <div class="card">
       <p class="dica esq" style="margin-top:0">Toque no nome de um aparelho para renomear (por exemplo, “Celular do João”). Marque o que cada aparelho pode acessar. “Desconectar” tira o aparelho da sincronização e apaga dele os dados da marmoraria na próxima vez que ele abrir o sistema com internet. As mudanças chegam ao aparelho em até 5 minutos.</p>
@@ -513,7 +570,7 @@ export function telaBloqueio() {
       <div class="bloqueio-icone"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.500-3.200 8-8 9-4.800-1-8-4.500-8-9V6z"/><path d="M9.500 12l2 2 3.500-4"/></svg></div>
       <h1>Aparelho não autorizado</h1>
       <p>Este sistema só abre em aparelhos liberados pelo computador principal.</p>
-      ${motivo ? `<div class="alerta s-offline">${motivo === 'chave' ? 'A chave de acesso foi trocada no computador principal' : 'Este aparelho foi desconectado pelo computador principal'} e os dados da marmoraria foram apagados dele.</div>` : ''}
+      ${motivo ? `<div class="alerta s-offline">${motivo === 'teste' ? 'O período de teste de 15 dias terminou' : motivo === 'chave' ? 'A chave de acesso foi trocada no computador principal' : 'Este aparelho foi desconectado pelo computador principal'} e os dados da marmoraria foram apagados deste navegador.</div>` : ''}
       ${painelSolicitacao()}
       ${painelEntrarComCodigo()}
       <details class="card">
@@ -554,7 +611,7 @@ async function mostrarQR() {
       document.head.appendChild(s);
     });
   }
-  const codigo = btoa(JSON.stringify({ r: cfg.repo, t: cfg.token, p: qrPerfil }));
+  const codigo = btoa(JSON.stringify(lerCodigoReutilizavel(criarCodigoReutilizavel(cfg, qrPerfil))));
   const qr = window.qrcode(0, 'M');
   qr.addData(`${endereco}#conectar=${encodeURIComponent(codigo)}`);
   qr.make();
@@ -573,29 +630,32 @@ async function mostrarQR() {
 }
 
 async function abrirQR() {
+  if (!podeConectarOutros()) { aviso('Somente o dono com acesso completo pode conectar outros aparelhos.'); return; }
   try { await mostrarQR(); } catch (e) { aviso('Não foi possível gerar o QR Code (sem internet?).'); return; }
   redesenhar();
 }
 
 export const acoes = {
   'codigo-baixar': el => acaoPedido(el, async () => {
-    if (!ehPrincipal() || !codigoReutilizavel) throw new Error('Gere o código no computador principal.');
-    const texto = `Marmoraria — código reutilizável de acesso\nPerfil: ${PERFIS[perfilReutilizavel].nome}\nGuarde em local privado. Quem tiver este código pode conectar aparelhos.\nNo aparelho novo, escolha Já tenho um código de acesso e cole a linha abaixo.\n\n${codigoReutilizavel}\n`;
+    if (!podeConectarOutros() || !codigoReutilizavel) throw new Error('Gere o código com o perfil Dono e acesso completo.');
+    const texto = `Marmoraria — código de acesso\nPerfil: ${PERFIS[perfilReutilizavel].nome}\n${codigoExpiraEm ? 'Teste válido até ' + new Date(codigoExpiraEm).toLocaleString('pt-BR') : 'Sem prazo de validade'}\nGuarde em local privado. Quem tiver este código pode conectar aparelhos.\nNo aparelho novo, escolha Já tenho um código de acesso e cole a linha abaixo.\n\n${codigoReutilizavel}\n`;
     const url = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = 'marmoraria-codigo-acesso.txt';
     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, 'codigo-erro'),
   'codigo-gerar': el => acaoPedido(el, async () => {
-    if (!ehPrincipal()) throw new Error('Somente o computador principal pode gerar códigos.');
+    if (!podeConectarOutros()) throw new Error('Somente o dono com acesso completo pode gerar códigos.');
     perfilReutilizavel = document.getElementById('codigo-perfil').value;
-    codigoReutilizavel = criarCodigoReutilizavel(cfg, perfilReutilizavel);
+    const geradoEm = Date.now();
+    codigoReutilizavel = criarCodigoReutilizavel(cfg, perfilReutilizavel, geradoEm);
+    codigoExpiraEm = perfilReutilizavel === 'teste' ? geradoEm + DURACAO_TESTE : 0;
     redesenhar();
   }, 'codigo-erro'),
   'codigo-entrar': el => acaoPedido(el, async () => {
     if (cfg) throw new Error('Este aparelho já está conectado.');
     const d = lerCodigoReutilizavel(document.getElementById('codigo-entrada').value);
-    await conectar(d.r, d.t, false, d.p);
+    await conectar(d.r, d.t, false, d.p, d);
     localStorage.removeItem(CHAVE_PEDIDO);
     aviso('Aparelho conectado. Guarde o código em local privado para usar novamente.');
     redesenhar(false);
@@ -613,7 +673,7 @@ export const acoes = {
     catch { campo.focus(); campo.select(); aviso('Código selecionado. Use Copiar do navegador ou Ctrl+C.'); }
   }),
   'pedido-conferir': el => acaoPedido(el, async () => {
-    if (!ehPrincipal()) throw new Error('Somente o computador principal pode aprovar.');
+    if (!podeConectarOutros()) throw new Error('Somente o dono com acesso completo pode aprovar.');
     pedidoDono = null; liberacaoDono = ''; pedidoPerfil = 'vendedor';
     const codigo = document.getElementById('dono-pedido').value;
     const p = lerSolicitacao(codigo);
@@ -621,7 +681,7 @@ export const acoes = {
     redesenhar();
   }),
   'pedido-aprovar': el => acaoPedido(el, async () => {
-    if (!ehPrincipal() || !pedidoDono) throw new Error('Confira a solicitação no computador principal.');
+    if (!podeConectarOutros() || !pedidoDono) throw new Error('Confira a solicitação com o perfil Dono e acesso completo.');
     // Usa exclusivamente o pedido já conferido, não um texto trocado depois no campo.
     pedidoPerfil = document.getElementById('dono-perfil').value;
     liberacaoDono = await aprovarSolicitacao(pedidoDono.codigo, cfg, pedidoPerfil);
@@ -632,7 +692,7 @@ export const acoes = {
     const pendente = ler(CHAVE_PEDIDO);
     const d = await abrirLiberacao(document.getElementById('pedido-resposta').value, pendente);
     localStorage.setItem(CHAVE_APAR, JSON.stringify({ id: novoId(), nome: pendente.nome }));
-    await conectar(d.r, d.t, false, d.p);
+    await conectar(d.r, d.t, false, d.p, d);
     localStorage.removeItem(CHAVE_PEDIDO);
     aviso('Aparelho liberado. Os dados foram baixados.');
     redesenhar(false);
@@ -668,6 +728,7 @@ export const acoes = {
   },
   'apar-atualizar': () => carregarAparelhos(),
   'apar-revogar': async el => {
+    if (!podeConectarOutros()) return aviso('Somente Dono/desenvolvedor pode administrar aparelhos.');
     try {
       await alterarAparelhos(l => { if (l[el.dataset.id]) { l[el.dataset.id].revogado = true; l[el.dataset.id].revogadoEm = agora(); } return l; });
       aviso('O aparelho será desconectado.');
@@ -675,6 +736,7 @@ export const acoes = {
     carregarAparelhos();
   },
   'apar-remover': async el => {
+    if (!podeConectarOutros()) return aviso('Somente Dono/desenvolvedor pode administrar aparelhos.');
     try { await alterarAparelhos(l => { delete l[el.dataset.id]; return l; }); } catch (e) { aviso('Erro: ' + e.message); }
     carregarAparelhos();
   },
@@ -683,6 +745,7 @@ export const acoes = {
 // Acessos marcados ou desmarcados na lista de aparelhos
 export function entrada(el) {
   if (!el.dataset.aparAcesso) return;
+  if (!podeConectarOutros()) return;
   const id = el.dataset.aparAcesso, modulo = el.dataset.modulo, marcado = el.checked;
   alterarAparelhos(l => { if (l[id]) l[id].acessos = { ...(l[id].acessos || {}), [modulo]: marcado }; return l; })
     .then(() => aviso('Acesso atualizado.'))
@@ -693,6 +756,7 @@ export function entrada(el) {
 export function mudanca(el) {
   if (!el.dataset.aparNome) return;
   const id = el.dataset.aparNome, nome = el.value.trim();
+  if (id !== meuAparelho().id && !podeConectarOutros()) return;
   if (!nome) return;
   alterarAparelhos(l => { if (l[id]) l[id].nome = nome; return l; })
     .then(() => {
@@ -711,8 +775,8 @@ export function conectarPeloLink() {
   if (!m) return false;
   history.replaceState(null, '', location.pathname + location.search + '#/');   // tira a chave da barra de endereço
   try {
-    const { r, t, p } = JSON.parse(atob(decodeURIComponent(m[1])));
-    conectar(r, t, false, p || 'dono')
+    const d = JSON.parse(atob(decodeURIComponent(m[1])));
+    conectar(d.r, d.t, false, d.p || 'dono', d)
       .then(() => { aviso('Aparelho conectado. Os dados foram baixados.'); redesenhar(false); })
       .catch(e => { aviso('Não foi possível conectar: ' + e.message); redesenhar(false); });
   } catch (e) {
@@ -723,6 +787,8 @@ export function conectarPeloLink() {
 
 // Chamado uma vez ao abrir o sistema
 export function iniciar() {
+  if (limpezaPendente() || (cfg && testeExpirou(cfg))) { conferirTeste(); return; }
+  agendarFimTeste();
   definirAoMudar(() => {
     if (!cfg) return;
     if (status !== 'sincronizando') definirStatus('pendente');
@@ -730,7 +796,7 @@ export function iniciar() {
   });
   const veioPeloLink = conectarPeloLink();
   setInterval(() => { if (cfg && document.visibilityState === 'visible') agendar(0); }, 60000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') agendar(0); });
+  document.addEventListener('visibilitychange', () => { conferirTeste(); if (document.visibilityState === 'visible') agendar(0); });
   addEventListener('online', () => agendar(0));
   addEventListener('offline', () => cfg && definirStatus('offline'));
   if (cfg && !veioPeloLink) agendar(300);
