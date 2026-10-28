@@ -1,0 +1,77 @@
+// Integração local de ações/HTML com navegador e GitHub simulados; sem rede real.
+import assert from 'node:assert/strict';
+globalThis.addEventListener = () => {};
+globalThis.location = { hostname: 'teste.invalid', protocol: 'https:', hash: '#/' };
+Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'Windows Chrome/', onLine: true }, configurable: true });
+let store;
+globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k,v) => store.set(k,v), removeItem: k => store.delete(k) };
+const campos = new Map();
+const campo = id => { if (!campos.has(id)) campos.set(id, { value: '', innerHTML: '', classList: { add() {}, remove() {} } }); return campos.get(id); };
+globalThis.document = { getElementById: campo, querySelectorAll: () => [], activeElement: null };
+let chamadas = 0;
+const arquivos = new Map();
+globalThis.fetch = async (url, op = {}) => {
+  chamadas++;
+  const nome = url.split('/contents/')[1];
+  if (!nome) return { ok: true, status: 200, json: async () => ({ private: true }) };
+  if (op.method === 'PUT') { arquivos.set(nome, JSON.parse(op.body).content); return { ok: true, status: 200 }; }
+  return arquivos.has(nome) ? { ok: true, status: 200, json: async () => ({ sha: 'teste', encoding: 'base64', content: arquivos.get(nome) }) } : { ok: false, status: 404 };
+};
+const botao = () => ({ disabled: false });
+const novo = store = new Map();
+const solicitante = await import('../js/sinc.js?solicitante');
+assert.equal(solicitante.bloqueado(), true);
+assert.match(solicitante.telaBloqueio(), /Gerar solicitação/);
+campo('pedido-nome').value = 'Computador <teste>';
+await solicitante.acoes['pedido-gerar'](botao());
+assert.equal(chamadas, 0, 'pedido não acessa repositório nem envia dados');
+assert.equal(solicitante.bloqueado(), true);
+const p = JSON.parse(store.get('marmoraria-pedido-acesso'));
+assert.match(solicitante.telaBloqueio(), /Computador &lt;teste&gt;/);
+assert.match(solicitante.telaBloqueio(), /Liberar este aparelho/);
+console.log('OK: aparelho gera pedido sem acesso a dados e permanece bloqueado');
+campo('pedido-erro').innerHTML = '';
+await solicitante.acoes['pedido-conferir'](botao());
+assert.match(campo('pedido-erro').innerHTML, /Somente o computador principal/);
+console.log('OK: aparelho bloqueado não pode aprovar');
+
+store = new Map([['marmoraria-sinc', JSON.stringify({ repo: 'ficticia/privado', token: 'teste-ficticio', principal: true })]]);
+const dono = await import('../js/sinc.js?dono');
+assert.match(dono.cartao(), /Aprovar solicitação/);
+campo('dono-pedido').value = p.pedido;
+await dono.acoes['pedido-conferir'](botao());
+assert.match(dono.cartao(), /Computador &lt;teste&gt;/);
+campo('dono-perfil').value = 'vendedor';
+await dono.acoes['pedido-aprovar'](botao());
+const codigo = dono.cartao().match(/id="dono-liberacao"[^>]*>([^<]+)<\/textarea>/)[1];
+assert.equal(chamadas, 0, 'aprovação prepara código local, sem escrita remota');
+console.log('OK: principal confere nome e aprova com perfil vendedor');
+
+store = novo;
+campo('pedido-resposta').value = codigo;
+await solicitante.acoes['pedido-entrar'](botao());
+assert.equal(solicitante.bloqueado(), false, campo('pedido-erro').innerHTML);
+assert.equal(store.has('marmoraria-pedido-acesso'), false);
+const cfg = JSON.parse(store.get('marmoraria-sinc'));
+assert.equal(cfg.principal, false);
+assert.equal(solicitante.pode('orcamentos'), true);
+assert.equal(solicitante.pode('financeiro'), false);
+const aparelhos = JSON.parse(Buffer.from(arquivos.get('aparelhos.json'), 'base64').toString());
+const eu = JSON.parse(store.get('marmoraria-aparelho'));
+assert.equal(aparelhos[eu.id].nome, 'Computador <teste>');
+assert.equal(aparelhos[eu.id].principal, false);
+console.log('OK: liberação conecta, registra aparelho secundário, aplica perfil e elimina pedido');
+
+store = new Map([['marmoraria-sinc', JSON.stringify({ repo: 'ficticia/privado', token: 'teste-ficticio', principal: false, perfil: 'dono' })]]);
+const secundario = await import('../js/sinc.js?secundario');
+assert.doesNotMatch(secundario.cartao(), /Aprovar solicitação/);
+campo('pedido-erro').innerHTML = '';
+await secundario.acoes['pedido-aprovar'](botao());
+assert.match(campo('pedido-erro').innerHTML, /computador principal/);
+console.log('OK: secundário com perfil Dono também não pode aprovar');
+store = novo;
+store.set('marmoraria-pedido-acesso', JSON.stringify(p));
+solicitante.acoes['pedido-cancelar']();
+assert.equal(store.has('marmoraria-pedido-acesso'), false);
+console.log('OK: cancelamento elimina solicitação e chave privada local');
+console.log('6 verificações de integração simulada concluídas.');

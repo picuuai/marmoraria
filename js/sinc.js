@@ -10,6 +10,57 @@ import { LOJAS, tudo, substituir, apagarTudo, definirAoMudar } from './db.js';
 import { esc, agora, novoId } from './util.js';
 import { redesenhar, aviso } from './nucleo.js';
 import { atualizarTexturas } from './desenho.js';
+import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao } from './convite.js';
+
+const CHAVE_PEDIDO = 'marmoraria-pedido-acesso';
+let pedidoDono = null, liberacaoDono = '', pedidoPerfil = 'vendedor';
+
+function painelSolicitacao() {
+  const p = ler(CHAVE_PEDIDO);
+  const valido = p && p.vence > Date.now();
+  return `<div class="card">
+    <h2>Solicitar acesso ao dono</h2>
+    <p class="dica esq">Use em outro computador ou celular, sem precisar de câmera.</p>
+    ${valido ? `<p>Solicitação de <b>${esc(p.nome)}</b>. Envie o código ao dono por mensagem. Ele deve abrir <b>Ajustes → Computador e celular → Aprovar solicitação</b>.</p>
+      <label for="pedido-codigo">Código da solicitação (válido por 24 horas)</label>
+      <textarea id="pedido-codigo" readonly rows="3">${esc(p.pedido)}</textarea>
+      <button data-acao="pedido-copiar" data-campo="pedido-codigo">Copiar solicitação</button>
+      <p class="nota">Aguarde a resposta do dono e cole abaixo. A troca dos códigos é por mensagem; não há envio automático. Volte a este mesmo navegador.</p>
+      <label for="pedido-resposta">Código de liberação recebido do dono</label>
+      <textarea id="pedido-resposta" rows="3" autocomplete="off" spellcheck="false"></textarea>
+      <button class="primario" data-acao="pedido-entrar">Liberar este aparelho</button>
+      <button data-acao="pedido-cancelar">Cancelar solicitação</button>` : `
+      <label for="pedido-nome">Seu nome e identificação do aparelho</label>
+      <input id="pedido-nome" maxlength="80" placeholder="Ex.: João — computador do escritório" value="${esc(meuAparelho().nome)}">
+      <button class="primario" data-acao="pedido-gerar">Gerar solicitação</button>
+      <p class="nota">Você enviará o código ao dono e receberá outro código após a aprovação.</p>`}
+    <div id="pedido-erro" role="status"></div>
+  </div>`;
+}
+
+function painelAprovacao() {
+  return `<h2>Aprovar solicitação</h2><div class="card">
+    <p class="dica esq">Para conectar outro computador ou celular sem câmera, peça à pessoa para gerar uma solicitação na tela inicial e enviar o código. Confira com ela a identidade antes de liberar.</p>
+    <label for="dono-pedido">Código da solicitação recebida</label>
+    <textarea id="dono-pedido" rows="3" autocomplete="off" spellcheck="false">${esc(pedidoDono?.codigo || '')}</textarea>
+    <button data-acao="pedido-conferir">Conferir solicitação</button>
+    ${pedidoDono ? `<p>Solicitação de <b>${esc(pedidoDono.nome)}</b>. Confira se é o aparelho que deseja liberar.</p>
+      <label for="dono-perfil">Acesso permitido</label><select id="dono-perfil">${Object.entries(PERFIS).map(([id, p]) => `<option value="${id}" ${pedidoPerfil === id ? 'selected' : ''}>${p.nome} — ${p.detalhe}</option>`).join('')}</select>
+      <button class="primario" data-acao="pedido-aprovar">Aprovar e gerar liberação</button>` : ''}
+    ${liberacaoDono ? `<label for="dono-liberacao">Código de liberação</label><textarea id="dono-liberacao" readonly rows="3">${esc(liberacaoDono)}</textarea>
+      <button data-acao="pedido-copiar" data-campo="dono-liberacao">Copiar liberação</button>
+      <p class="nota">Envie à pessoa para colar no mesmo navegador que fez a solicitação. Válido por até 30 minutos. O aparelho aparecerá na lista após conectar.</p>` : ''}
+    <div id="pedido-erro" role="status"></div></div>`;
+}
+
+async function acaoPedido(el, fn) {
+  el.disabled = true;
+  try { await fn(); }
+  catch (e) {
+    const caixa = document.getElementById('pedido-erro');
+    if (caixa) caixa.innerHTML = `<p class="alerta s-erro">${esc(e.message)}</p>`;
+  } finally { el.disabled = false; }
+}
 
 const CHAVE = 'marmoraria-sinc', CHAVE_APAR = 'marmoraria-aparelho', CHAVE_REVOGADO = 'marmoraria-revogado';
 const ARQ_DADOS = 'dados.json', ARQ_APAR = 'aparelhos.json';
@@ -373,7 +424,7 @@ const emEnderecoPublico = () => !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(locat
 
 function formularioConexao() {
   return `
-    <p class="dica esq" style="margin-top:0">Os dados ficam num repositório <b>privado</b> do seu GitHub. Configure <b>no computador</b>; os outros aparelhos se conectam depois lendo um QR Code.</p>
+    <p class="dica esq" style="margin-top:0">Os dados ficam num repositório <b>privado</b> do seu GitHub. Configure <b>no computador principal</b>; os outros aparelhos entram por solicitação de acesso ou QR Code.</p>
     <ol class="passos">
       <li><b>Crie o repositório privado</b> dos dados:
         <a class="botao pequeno" href="https://github.com/new?name=${REPO_SUGERIDO}&visibility=private" target="_blank" rel="noopener">Abrir no GitHub</a>
@@ -410,6 +461,7 @@ export function cartao() {
       ${principal ? '' : '<p class="nota">Ao desconectar, os dados da marmoraria são apagados deste aparelho (continuam na nuvem).</p>'}
     </div>
     ${principal ? `
+    ${painelAprovacao()}
     <h2>Aparelhos autorizados</h2>
     <div class="card">
       <p class="dica esq" style="margin-top:0">Toque no nome de um aparelho para renomear (por exemplo, “Celular do João”). Marque o que cada aparelho pode acessar. “Desconectar” tira o aparelho da sincronização e apaga dele os dados da marmoraria na próxima vez que ele abrir o sistema com internet. As mudanças chegam ao aparelho em até 5 minutos.</p>
@@ -435,14 +487,15 @@ export function telaBloqueio() {
       <h1>Aparelho não autorizado</h1>
       <p>Este sistema só abre em aparelhos liberados pelo computador principal.</p>
       ${motivo ? `<div class="alerta s-offline">${motivo === 'chave' ? 'A chave de acesso foi trocada no computador principal' : 'Este aparelho foi desconectado pelo computador principal'} e os dados da marmoraria foram apagados dele.</div>` : ''}
-      <div class="card">
-        <b>Para liberar este aparelho:</b>
+      ${painelSolicitacao()}
+      <details class="card">
+        <summary>Conectar pela câmera do celular</summary>
         <ol class="passos" style="margin-top:8px">
           <li>No computador principal, abra <b>Ajustes → Computador e celular</b>.</li>
           <li>Clique em <b>Conectar outro aparelho</b> e escolha o perfil.</li>
           <li>Aponte a câmera deste aparelho para o QR Code e toque no link.</li>
         </ol>
-      </div>
+      </details>
       <details class="card">
         <summary>Sou o dono e quero configurar este aparelho como computador principal</summary>
         <div style="margin-top:14px">${formularioConexao()}</div>
@@ -497,6 +550,43 @@ async function abrirQR() {
 }
 
 export const acoes = {
+  'pedido-gerar': el => acaoPedido(el, async () => {
+    if (cfg) throw new Error('Este aparelho já está conectado.');
+    const p = await criarSolicitacao(document.getElementById('pedido-nome').value);
+    localStorage.setItem(CHAVE_PEDIDO, JSON.stringify(p));
+    redesenhar();
+  }),
+  'pedido-cancelar': () => { localStorage.removeItem(CHAVE_PEDIDO); redesenhar(); },
+  'pedido-copiar': el => acaoPedido(el, async () => {
+    const campo = document.getElementById(el.dataset.campo);
+    try { await navigator.clipboard.writeText(campo.value); aviso('Código copiado.'); }
+    catch { campo.focus(); campo.select(); aviso('Código selecionado. Use Copiar do navegador ou Ctrl+C.'); }
+  }),
+  'pedido-conferir': el => acaoPedido(el, async () => {
+    if (!ehPrincipal()) throw new Error('Somente o computador principal pode aprovar.');
+    pedidoDono = null; liberacaoDono = ''; pedidoPerfil = 'vendedor';
+    const codigo = document.getElementById('dono-pedido').value;
+    const p = lerSolicitacao(codigo);
+    pedidoDono = { ...p, codigo };
+    redesenhar();
+  }),
+  'pedido-aprovar': el => acaoPedido(el, async () => {
+    if (!ehPrincipal() || !pedidoDono) throw new Error('Confira a solicitação no computador principal.');
+    // Usa exclusivamente o pedido já conferido, não um texto trocado depois no campo.
+    pedidoPerfil = document.getElementById('dono-perfil').value;
+    liberacaoDono = await aprovarSolicitacao(pedidoDono.codigo, cfg, pedidoPerfil);
+    redesenhar();
+  }),
+  'pedido-entrar': el => acaoPedido(el, async () => {
+    if (cfg) throw new Error('Este aparelho já está conectado.');
+    const pendente = ler(CHAVE_PEDIDO);
+    const d = await abrirLiberacao(document.getElementById('pedido-resposta').value, pendente);
+    localStorage.setItem(CHAVE_APAR, JSON.stringify({ id: novoId(), nome: pendente.nome }));
+    await conectar(d.r, d.t, false, d.p);
+    localStorage.removeItem(CHAVE_PEDIDO);
+    aviso('Aparelho liberado. Os dados foram baixados.');
+    redesenhar(false);
+  }),
   'sinc-agora': async () => { ultimaVerif = 0; await sincronizar(); if (status === 'ok') aviso('Sincronizado.'); carregarAparelhos(); },
   'sinc-sair': async () => { await desconectar(); redesenhar(false); },
   'sinc-qr': async () => { if (qrAberto) { qrAberto = ''; redesenhar(); } else await abrirQR(); },
