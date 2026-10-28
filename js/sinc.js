@@ -31,7 +31,7 @@ function painelCodigoReutilizavel() {
 }
 
 function painelEntrarComCodigo() {
-  return `<details class="card"><summary>Já tenho um código reutilizável de acesso</summary>
+  return `<details class="card"><summary>Já tenho um código de acesso</summary>
     <p class="dica esq">Cole o código MAR-CONEXAO-1 fornecido pelo dono. Pode ser usado em outros computadores.</p>
     <label for="codigo-entrada">Código reutilizável</label>
     <textarea id="codigo-entrada" rows="3" autocomplete="off" spellcheck="false"></textarea>
@@ -580,7 +580,7 @@ async function abrirQR() {
 export const acoes = {
   'codigo-baixar': el => acaoPedido(el, async () => {
     if (!ehPrincipal() || !codigoReutilizavel) throw new Error('Gere o código no computador principal.');
-    const texto = `Marmoraria — código reutilizável de acesso\nPerfil: ${PERFIS[perfilReutilizavel].nome}\nGuarde em local privado. Quem tiver este código pode conectar aparelhos.\nNo aparelho novo, escolha Já tenho um código reutilizável de acesso e cole a linha abaixo.\n\n${codigoReutilizavel}\n`;
+    const texto = `Marmoraria — código reutilizável de acesso\nPerfil: ${PERFIS[perfilReutilizavel].nome}\nGuarde em local privado. Quem tiver este código pode conectar aparelhos.\nNo aparelho novo, escolha Já tenho um código de acesso e cole a linha abaixo.\n\n${codigoReutilizavel}\n`;
     const url = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = 'marmoraria-codigo-acesso.txt';

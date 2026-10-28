@@ -77,7 +77,7 @@ store.set('marmoraria-pedido-acesso', JSON.stringify(p));
 solicitante.acoes['pedido-cancelar']();
 assert.equal(store.has('marmoraria-pedido-acesso'), false);
 console.log('OK: cancelamento elimina solicitação e chave privada local');
-assert.match(solicitante.telaBloqueio(), /Já tenho um código reutilizável/);
+assert.match(solicitante.telaBloqueio(), /Já tenho um código de acesso/);
 store = new Map();
 campo('codigo-perfil').value = 'vendedor';
 await dono.acoes['codigo-gerar'](botao());
