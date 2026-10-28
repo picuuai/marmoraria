@@ -10,19 +10,43 @@ import { LOJAS, tudo, substituir, apagarTudo, definirAoMudar } from './db.js';
 import { esc, agora, novoId } from './util.js';
 import { redesenhar, aviso } from './nucleo.js';
 import { atualizarTexturas } from './desenho.js';
-import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao } from './convite.js';
+import { criarSolicitacao, lerSolicitacao, aprovarSolicitacao, abrirLiberacao, criarCodigoReutilizavel, lerCodigoReutilizavel } from './convite.js';
 
 const CHAVE_PEDIDO = 'marmoraria-pedido-acesso';
 let pedidoDono = null, liberacaoDono = '', pedidoPerfil = 'vendedor';
+let codigoReutilizavel = '', perfilReutilizavel = 'vendedor';
+
+function painelCodigoReutilizavel() {
+  return `<h2>Código reutilizável de acesso</h2><div class="card">
+    <p class="dica esq">Gere uma vez e guarde em local privado. Use o mesmo código em outros computadores ou celulares, sem câmera e sem nova solicitação. Cada conexão cria um aparelho secundário na lista.</p>
+    <label for="codigo-perfil">Perfil para o código</label>
+    <select id="codigo-perfil">${Object.entries(PERFIS).map(([id,p]) => `<option value="${id}" ${perfilReutilizavel === id ? 'selected' : ''}>${p.nome} — ${p.detalhe}</option>`).join('')}</select>
+    <button data-acao="codigo-gerar">Gerar código reutilizável</button>
+    ${codigoReutilizavel ? `<label for="codigo-reutilizavel">Código para guardar</label>
+      <textarea id="codigo-reutilizavel" readonly rows="3">${esc(codigoReutilizavel)}</textarea>
+      <button data-acao="pedido-copiar" data-campo="codigo-reutilizavel">Copiar código</button>
+      <button data-acao="codigo-baixar">Baixar código para guardar</button>` : ''}
+    <p class="nota">Quem tiver este código poderá conectar aparelhos com o perfil escolhido. Ele não vence por tempo; deixa de funcionar se a chave do GitHub for revogada ou trocada. Para invalidá-lo, use Trocar a chave e apague a antiga no GitHub. Desconectar apenas um aparelho não invalida este código.</p>
+    <div id="codigo-erro" role="status"></div></div>`;
+}
+
+function painelEntrarComCodigo() {
+  return `<details class="card"><summary>Já tenho um código reutilizável de acesso</summary>
+    <p class="dica esq">Cole o código MAR-CONEXAO-1 fornecido pelo dono. Pode ser usado em outros computadores.</p>
+    <label for="codigo-entrada">Código reutilizável</label>
+    <textarea id="codigo-entrada" rows="3" autocomplete="off" spellcheck="false"></textarea>
+    <button class="primario" data-acao="codigo-entrar">Conectar com este código</button>
+    <div id="codigo-erro" role="status"></div></details>`;
+}
 
 function painelSolicitacao() {
   const p = ler(CHAVE_PEDIDO);
-  const valido = p && p.vence > Date.now();
+  const valido = !!p;
   return `<div class="card">
     <h2>Solicitar acesso ao dono</h2>
     <p class="dica esq">Use em outro computador ou celular, sem precisar de câmera.</p>
     ${valido ? `<p>Solicitação de <b>${esc(p.nome)}</b>. Envie o código ao dono por mensagem. Ele deve abrir <b>Ajustes → Computador e celular → Aprovar solicitação</b>.</p>
-      <label for="pedido-codigo">Código da solicitação (válido por 24 horas)</label>
+      <label for="pedido-codigo">Código da solicitação (sem prazo de validade)</label>
       <textarea id="pedido-codigo" readonly rows="3">${esc(p.pedido)}</textarea>
       <button data-acao="pedido-copiar" data-campo="pedido-codigo">Copiar solicitação</button>
       <p class="nota">Aguarde a resposta do dono e cole abaixo. A troca dos códigos é por mensagem; não há envio automático. Volte a este mesmo navegador.</p>
@@ -49,15 +73,15 @@ function painelAprovacao() {
       <button class="primario" data-acao="pedido-aprovar">Aprovar e gerar liberação</button>` : ''}
     ${liberacaoDono ? `<label for="dono-liberacao">Código de liberação</label><textarea id="dono-liberacao" readonly rows="3">${esc(liberacaoDono)}</textarea>
       <button data-acao="pedido-copiar" data-campo="dono-liberacao">Copiar liberação</button>
-      <p class="nota">Envie à pessoa para colar no mesmo navegador que fez a solicitação. Válido por até 30 minutos. O aparelho aparecerá na lista após conectar.</p>` : ''}
+      <p class="nota">Envie à pessoa para colar no mesmo navegador que fez a solicitação. Sem prazo de validade. O aparelho aparecerá na lista após conectar.</p>` : ''}
     <div id="pedido-erro" role="status"></div></div>`;
 }
 
-async function acaoPedido(el, fn) {
+async function acaoPedido(el, fn, erroId = 'pedido-erro') {
   el.disabled = true;
   try { await fn(); }
   catch (e) {
-    const caixa = document.getElementById('pedido-erro');
+    const caixa = document.getElementById(erroId);
     if (caixa) caixa.innerHTML = `<p class="alerta s-erro">${esc(e.message)}</p>`;
   } finally { el.disabled = false; }
 }
@@ -311,6 +335,7 @@ async function trocarChave(token) {
   const r = await gh('', {}, teste);
   if (!r.ok) throw new Error(await diagnosticar(teste));
   cfg.token = token;
+  codigoReutilizavel = ''; liberacaoDono = ''; pedidoDono = null;
   gravarCfg();
   // os outros aparelhos ficam com a chave antiga (inválida): saem da lista e precisam ler o QR de novo
   await alterarAparelhos(l => { for (const id of Object.keys(l)) if (id !== meuAparelho().id) delete l[id]; return l; });
@@ -396,6 +421,7 @@ async function desconectar() {
   gravarCfg();
   clearTimeout(relogio);
   qrAberto = '';
+  codigoReutilizavel = ''; pedidoDono = null; liberacaoDono = '';
   definirStatus('off');
 }
 
@@ -461,6 +487,7 @@ export function cartao() {
       ${principal ? '' : '<p class="nota">Ao desconectar, os dados da marmoraria são apagados deste aparelho (continuam na nuvem).</p>'}
     </div>
     ${principal ? `
+    ${painelCodigoReutilizavel()}
     ${painelAprovacao()}
     <h2>Aparelhos autorizados</h2>
     <div class="card">
@@ -488,6 +515,7 @@ export function telaBloqueio() {
       <p>Este sistema só abre em aparelhos liberados pelo computador principal.</p>
       ${motivo ? `<div class="alerta s-offline">${motivo === 'chave' ? 'A chave de acesso foi trocada no computador principal' : 'Este aparelho foi desconectado pelo computador principal'} e os dados da marmoraria foram apagados dele.</div>` : ''}
       ${painelSolicitacao()}
+      ${painelEntrarComCodigo()}
       <details class="card">
         <summary>Conectar pela câmera do celular</summary>
         <ol class="passos" style="margin-top:8px">
@@ -550,6 +578,28 @@ async function abrirQR() {
 }
 
 export const acoes = {
+  'codigo-baixar': el => acaoPedido(el, async () => {
+    if (!ehPrincipal() || !codigoReutilizavel) throw new Error('Gere o código no computador principal.');
+    const texto = `Marmoraria — código reutilizável de acesso\nPerfil: ${PERFIS[perfilReutilizavel].nome}\nGuarde em local privado. Quem tiver este código pode conectar aparelhos.\nNo aparelho novo, escolha Já tenho um código reutilizável de acesso e cole a linha abaixo.\n\n${codigoReutilizavel}\n`;
+    const url = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'marmoraria-codigo-acesso.txt';
+    link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'codigo-erro'),
+  'codigo-gerar': el => acaoPedido(el, async () => {
+    if (!ehPrincipal()) throw new Error('Somente o computador principal pode gerar códigos.');
+    perfilReutilizavel = document.getElementById('codigo-perfil').value;
+    codigoReutilizavel = criarCodigoReutilizavel(cfg, perfilReutilizavel);
+    redesenhar();
+  }, 'codigo-erro'),
+  'codigo-entrar': el => acaoPedido(el, async () => {
+    if (cfg) throw new Error('Este aparelho já está conectado.');
+    const d = lerCodigoReutilizavel(document.getElementById('codigo-entrada').value);
+    await conectar(d.r, d.t, false, d.p);
+    localStorage.removeItem(CHAVE_PEDIDO);
+    aviso('Aparelho conectado. Guarde o código em local privado para usar novamente.');
+    redesenhar(false);
+  }, 'codigo-erro'),
   'pedido-gerar': el => acaoPedido(el, async () => {
     if (cfg) throw new Error('Este aparelho já está conectado.');
     const p = await criarSolicitacao(document.getElementById('pedido-nome').value);
